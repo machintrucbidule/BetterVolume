@@ -26,7 +26,7 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::UI::Shell::{
     FOLDERID_Programs, FOLDERID_UserProgramFiles, IShellLinkW, SHGetKnownFolderPath, ShellLink,
-    KF_FLAG_DEFAULT,
+    KF_FLAG_DONT_VERIFY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowW, GetWindowThreadProcessId, PostMessageW,
@@ -88,9 +88,12 @@ fn shortcut_path() -> Option<PathBuf> {
     known_folder(&FOLDERID_Programs).map(|f| f.join(format!("{NAME}.lnk")))
 }
 
+/// The path of a known folder, whether or not it exists yet: on a new Windows account
+/// `%LOCALAPPDATA%\Programs` is only created by the first per-user installation, and the
+/// installation creates the folders it needs.
 fn known_folder(id: &GUID) -> Option<PathBuf> {
     // SAFETY: a valid identifier; the returned string is freed below.
-    let folder = unsafe { SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, None) }.ok()?;
+    let folder = unsafe { SHGetKnownFolderPath(id, KF_FLAG_DONT_VERIFY, None) }.ok()?;
     // SAFETY: a NUL-terminated string from the call above.
     let text = unsafe { folder.to_string() }.ok();
     // SAFETY: allocated by the shell with the task allocator.
