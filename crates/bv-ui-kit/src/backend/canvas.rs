@@ -1,0 +1,340 @@
+//! The safe drawing surface handed to painters.
+
+use windows::Win32::Graphics::Direct2D::Common::{
+    D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_COLOR_F, D2D1_PIXEL_FORMAT, D2D_RECT_F,
+};
+use windows::Win32::Graphics::Direct2D::{
+    ID2D1Factory1, ID2D1RenderTarget, ID2D1SolidColorBrush, D2D1_ANTIALIAS_MODE_ALIASED,
+    D2D1_DRAW_TEXT_OPTIONS_CLIP, D2D1_DRAW_TEXT_OPTIONS_NONE, D2D1_ELLIPSE,
+    D2D1_FEATURE_LEVEL_DEFAULT, D2D1_RENDER_TARGET_PROPERTIES, D2D1_RENDER_TARGET_TYPE_SOFTWARE,
+    D2D1_RENDER_TARGET_USAGE_NONE, D2D1_ROUNDED_RECT, D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE,
+};
+use windows::Win32::Graphics::DirectWrite::{
+    DWRITE_MEASURING_MODE_NATURAL, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_TEXT_ALIGNMENT_LEADING,
+    DWRITE_TEXT_ALIGNMENT_TRAILING,
+};
+use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
+use windows::Win32::Graphics::Imaging::IWICBitmap;
+use windows_numerics::Vector2;
+
+use super::{Graphics, GraphicsError};
+use crate::path::Path;
+use crate::tokens::typography::TextStyle;
+use crate::{Color, Point, Rect};
+
+/// Horizontal alignment of a text line in its box (it is always centred vertically).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TextAlign {
+    /// Left (right in right-to-left languages).
+    #[default]
+    Leading,
+    /// Centre.
+    Center,
+    /// Right (left in right-to-left languages).
+    Trailing,
+}
+
+fn color(c: Color) -> D2D1_COLOR_F {
+    D2D1_COLOR_F { r: c.r, g: c.g, b: c.b, a: c.a }
+}
+
+fn rect(r: Rect) -> D2D_RECT_F {
+    D2D_RECT_F { left: r.x, top: r.y, right: r.right(), bottom: r.bottom() }
+}
+
+/// Drawing operations in DIPs. Failures inside a frame are reported once, by the
+/// function that ends the frame.
+pub struct Canvas<'a> {
+    target: &'a ID2D1RenderTarget,
+    graphics: &'a Graphics,
+    brush: ID2D1SolidColorBrush,
+    text_scale: f32,
+    error: Option<GraphicsError>,
+}
+
+impl Canvas<'_> {
+    fn keep(&mut self, result: Result<(), GraphicsError>) {
+        if let Err(error) = result {
+            self.error.get_or_insert(error);
+        }
+    }
+
+    fn brush(&self, c: Color) -> &ID2D1SolidColorBrush {
+        // SAFETY: plain setter on our own brush.
+        unsafe { self.brush.SetColor(&color(c)) };
+        &self.brush
+    }
+
+    /// Windows text scaling factor this canvas draws text at.
+    pub fn text_scale(&self) -> f32 {
+        self.text_scale
+    }
+
+    /// Replaces every pixel with `c` (transparent included).
+    pub fn clear(&mut self, c: Color) {
+        // SAFETY: plain call inside BeginDraw/EndDraw.
+        unsafe { self.target.Clear(Some(&color(c))) };
+    }
+
+    /// Runs `draw` with drawing limited to the rectangle `r`.
+    pub fn clipped(&mut self, r: Rect, draw: impl FnOnce(&mut Self)) {
+        // SAFETY: plain call inside BeginDraw/EndDraw; popped below.
+        unsafe { self.target.PushAxisAlignedClip(&rect(r), D2D1_ANTIALIAS_MODE_ALIASED) };
+        draw(self);
+        // SAFETY: pops the clip pushed above (draw cannot pop it: no such method).
+        unsafe { self.target.PopAxisAlignedClip() };
+    }
+
+    /// Fills a rectangle.
+    pub fn fill_rect(&mut self, r: Rect, c: Color) {
+        let brush = self.brush(c).clone();
+        // SAFETY: plain call inside BeginDraw/EndDraw with a valid brush.
+        unsafe { self.target.FillRectangle(&rect(r), &brush) };
+    }
+
+    /// Fills a rounded rectangle.
+    pub fn fill_rounded(&mut self, r: Rect, radius: f32, c: Color) {
+        let brush = self.brush(c).clone();
+        let rounded = D2D1_ROUNDED_RECT { rect: rect(r), radiusX: radius, radiusY: radius };
+        // SAFETY: plain call inside BeginDraw/EndDraw with a valid brush.
+        unsafe { self.target.FillRoundedRectangle(&rounded, &brush) };
+    }
+
+    /// Draws the outline of a rounded rectangle, centred on its edges.
+    pub fn stroke_rounded(&mut self, r: Rect, radius: f32, width: f32, c: Color) {
+        let brush = self.brush(c).clone();
+        let rounded = D2D1_ROUNDED_RECT { rect: rect(r), radiusX: radius, radiusY: radius };
+        // SAFETY: plain call inside BeginDraw/EndDraw with a valid brush.
+        unsafe { self.target.DrawRoundedRectangle(&rounded, &brush, width, None) };
+    }
+
+    /// Draws a straight line.
+    pub fn line(&mut self, from: Point, to: Point, width: f32, c: Color) {
+        let brush = self.brush(c).clone();
+        let (a, b) = (Vector2 { X: from.x, Y: from.y }, Vector2 { X: to.x, Y: to.y });
+        // SAFETY: plain call inside BeginDraw/EndDraw with a valid brush.
+        unsafe { self.target.DrawLine(a, b, &brush, width, None) };
+    }
+
+    /// Fills a circle.
+    pub fn fill_circle(&mut self, center: Point, radius: f32, c: Color) {
+        let brush = self.brush(c).clone();
+        let ellipse = D2D1_ELLIPSE {
+            point: Vector2 { X: center.x, Y: center.y },
+            radiusX: radius,
+            radiusY: radius,
+        };
+        // SAFETY: plain call inside BeginDraw/EndDraw with a valid brush.
+        unsafe { self.target.FillEllipse(&ellipse, &brush) };
+    }
+
+    /// Draws the outline of a circle, centred on its edge.
+    pub fn stroke_circle(&mut self, center: Point, radius: f32, width: f32, c: Color) {
+        let brush = self.brush(c).clone();
+        let ellipse = D2D1_ELLIPSE {
+            point: Vector2 { X: center.x, Y: center.y },
+            radiusX: radius,
+            radiusY: radius,
+        };
+        // SAFETY: plain call inside BeginDraw/EndDraw with a valid brush.
+        unsafe { self.target.DrawEllipse(&ellipse, &brush, width, None) };
+    }
+
+    /// Draws the outline of a path with round caps and joins (the Fluent icon stroke).
+    pub fn stroke_path(&mut self, path: &Path, width: f32, c: Color) {
+        let result = self.graphics.geometry(path).and_then(|geometry| {
+            let style = self.graphics.round_stroke()?;
+            let brush = self.brush(c).clone();
+            // SAFETY: plain call inside BeginDraw/EndDraw with valid objects of one factory.
+            unsafe { self.target.DrawGeometry(&geometry, &brush, width, &style) };
+            Ok(())
+        });
+        self.keep(result);
+    }
+
+    /// Fills a path.
+    pub fn fill_path(&mut self, path: &Path, c: Color) {
+        let result = self.graphics.geometry(path).map(|geometry| {
+            let brush = self.brush(c).clone();
+            // SAFETY: plain call inside BeginDraw/EndDraw with valid objects of one factory.
+            unsafe { self.target.FillGeometry(&geometry, &brush, None) };
+        });
+        self.keep(result);
+    }
+
+    /// Draws one line of text in `r` (clipped to it), centred vertically.
+    pub fn text(&mut self, text: &str, style: TextStyle, r: Rect, align: TextAlign, c: Color) {
+        let result = self.graphics.text_format(style, self.text_scale).and_then(|format| {
+            let alignment = match align {
+                TextAlign::Leading => DWRITE_TEXT_ALIGNMENT_LEADING,
+                TextAlign::Center => DWRITE_TEXT_ALIGNMENT_CENTER,
+                TextAlign::Trailing => DWRITE_TEXT_ALIGNMENT_TRAILING,
+            };
+            // SAFETY: plain setter; formats are only used on this thread, one draw at a time.
+            unsafe { format.SetTextAlignment(alignment) }?;
+            let wide: Vec<u16> = text.encode_utf16().collect();
+            let brush = self.brush(c).clone();
+            // SAFETY: plain call inside BeginDraw/EndDraw; buffers outlive it.
+            unsafe {
+                self.target.DrawText(
+                    &wide,
+                    &format,
+                    &rect(r),
+                    &brush,
+                    D2D1_DRAW_TEXT_OPTIONS_CLIP,
+                    DWRITE_MEASURING_MODE_NATURAL,
+                )
+            };
+            Ok(())
+        });
+        self.keep(result);
+    }
+
+    /// Draws a glyph of the Windows icon font, `size` DIPs, centred in `r`.
+    pub fn glyph(&mut self, glyph: char, size: f32, r: Rect, c: Color) {
+        let result = self.graphics.icon_format(size).map(|format| {
+            let mut buffer = [0u16; 2];
+            let wide = glyph.encode_utf16(&mut buffer);
+            let brush = self.brush(c).clone();
+            // SAFETY: plain call inside BeginDraw/EndDraw; buffers outlive it.
+            unsafe {
+                self.target.DrawText(
+                    wide,
+                    &format,
+                    &rect(r),
+                    &brush,
+                    D2D1_DRAW_TEXT_OPTIONS_NONE,
+                    DWRITE_MEASURING_MODE_NATURAL,
+                )
+            };
+        });
+        self.keep(result);
+    }
+}
+
+/// A paragraph of text laid out for drawing or measuring.
+pub(crate) struct Paragraph {
+    pub(crate) layout: windows::Win32::Graphics::DirectWrite::IDWriteTextLayout,
+}
+
+impl Canvas<'_> {
+    /// Draws text wrapped on at most `max_lines` lines in `r` (top-aligned), the last line
+    /// ellipsised if the text does not fit.
+    pub fn text_wrapped(
+        &mut self,
+        text: &str,
+        style: TextStyle,
+        r: Rect,
+        align: TextAlign,
+        max_lines: u32,
+        c: Color,
+    ) {
+        let height = style.line_height * self.text_scale * max_lines as f32;
+        let result = self
+            .graphics
+            .paragraph(text, style, self.text_scale, r.width, height, align, true)
+            .map(|paragraph| {
+                let brush = self.brush(c).clone();
+                // SAFETY: plain call inside BeginDraw/EndDraw with valid objects.
+                unsafe {
+                    self.target.DrawTextLayout(
+                        Vector2 { X: r.x, Y: r.y },
+                        &paragraph.layout,
+                        &brush,
+                        D2D1_DRAW_TEXT_OPTIONS_CLIP,
+                    )
+                };
+            });
+        self.keep(result);
+    }
+
+    /// Draws an image (premultiplied BGRA) scaled into `r`, with an opacity.
+    pub fn image(&mut self, image: &super::Pixels, r: Rect, opacity: f32) {
+        if image.width == 0 || image.height == 0 {
+            return;
+        }
+        let properties = windows::Win32::Graphics::Direct2D::D2D1_BITMAP_PROPERTIES {
+            pixelFormat: D2D1_PIXEL_FORMAT {
+                format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
+            },
+            dpiX: 96.0,
+            dpiY: 96.0,
+        };
+        let size = windows::Win32::Graphics::Direct2D::Common::D2D_SIZE_U {
+            width: image.width,
+            height: image.height,
+        };
+        // SAFETY: `data` holds `width * height * 4` bytes (contract of `Pixels`), read
+        // during the call only; the pitch matches.
+        let bitmap = unsafe {
+            self.target.CreateBitmap(
+                size,
+                Some(image.data.as_ptr().cast()),
+                image.width * 4,
+                &properties,
+            )
+        };
+        match bitmap {
+            // SAFETY: plain call inside BeginDraw/EndDraw with a bitmap of this target.
+            Ok(bitmap) => unsafe {
+                self.target.DrawBitmap(
+                    &bitmap,
+                    Some(&rect(r)),
+                    opacity,
+                    windows::Win32::Graphics::Direct2D::D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                    None,
+                )
+            },
+            Err(error) => self.keep(Err(error.into())),
+        }
+    }
+}
+
+/// A software render target drawing into a WIC bitmap, in DIPs at `scale`.
+pub(crate) fn wic_target(
+    factory: &ID2D1Factory1,
+    bitmap: &IWICBitmap,
+    scale: f32,
+) -> Result<ID2D1RenderTarget, GraphicsError> {
+    let properties = D2D1_RENDER_TARGET_PROPERTIES {
+        r#type: D2D1_RENDER_TARGET_TYPE_SOFTWARE,
+        pixelFormat: D2D1_PIXEL_FORMAT {
+            format: DXGI_FORMAT_B8G8R8A8_UNORM,
+            alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
+        },
+        dpiX: 96.0 * scale,
+        dpiY: 96.0 * scale,
+        usage: D2D1_RENDER_TARGET_USAGE_NONE,
+        minLevel: D2D1_FEATURE_LEVEL_DEFAULT,
+    };
+    // SAFETY: `bitmap` is a valid WIC bitmap in a format Direct2D supports.
+    Ok(unsafe { factory.CreateWicBitmapRenderTarget(bitmap, &properties) }?)
+}
+
+/// Runs one frame on `target`: clears nothing, lets `paint` draw, reports the first
+/// failure of the frame.
+pub(crate) fn draw(
+    graphics: &Graphics,
+    target: &ID2D1RenderTarget,
+    text_scale: f32,
+    paint: impl FnOnce(&mut Canvas<'_>),
+) -> Result<(), GraphicsError> {
+    // SAFETY: plain calls on a valid render target.
+    let brush = unsafe { target.CreateSolidColorBrush(&color(Color::BLACK), None) }?;
+    // SAFETY: as above. Grayscale: ClearType is not allowed on transparent surfaces.
+    unsafe {
+        target.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+        target.BeginDraw();
+    }
+    let mut canvas = Canvas { target, graphics, brush, text_scale, error: None };
+    paint(&mut canvas);
+    let error = canvas.error.take();
+    drop(canvas);
+    // SAFETY: ends the frame begun above.
+    let ended = unsafe { target.EndDraw(None, None) };
+    if let Some(error) = error {
+        return Err(error);
+    }
+    Ok(ended?)
+}

@@ -1,0 +1,35 @@
+[package]
+name = "bv-taskbar-helper"
+description = "In-taskbar helper that collapses the Windows volume tray element (FR-018)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Loaded into the Windows taskbar process through the documented XAML Diagnostics TAP
+# entry point (ARCHITECTURE section 7). A C-ABI dynamic library, never linked by the app.
+# cdylib is the shipped artifact; rlib lets the crate's own tests and the feasibility
+# example link against it (it exposes only the CLSID and the glyph classifier).
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# Dev-machine feasibility tracing to a temp log; never enabled in the shipped library.
+trace = []
+
+[lints]
+workspace = true
+
+[dependencies]
+windows-core.workspace = true
+
+[dependencies.windows]
+workspace = true
+features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+]

@@ -1,0 +1,49 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/bv-core",
+    "crates/bv-audio",
+    "crates/bv-ui-kit",
+    "crates/bv-shell",
+    "crates/bv-mqtt",
+    "crates/bv-taskbar-helper",
+    "crates/bv-app",
+]
+
+[workspace.package]
+version = "2.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+# Internal crates are added here when a first crate depends on them.
+bv-audio = { path = "crates/bv-audio" }
+bv-core = { path = "crates/bv-core" }
+bv-mqtt = { path = "crates/bv-mqtt" }
+bv-shell = { path = "crates/bv-shell" }
+bv-ui-kit = { path = "crates/bv-ui-kit" }
+windows = "0.62"
+windows-core = "0.62"
+windows-numerics = "0.3"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "deny"
+dbg_macro = "deny"
+todo = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+
+# Footprint first (docs/ARCHITECTURE.md §2): small, single code unit, no unwinding tables.
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false
+incremental = false

@@ -1,0 +1,25 @@
+[package]
+name = "bv-app"
+description = "BetterVolume executable: wires events, owns state, builds views from design-system controls"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "BetterVolume"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+bv-core.workspace = true
+bv-shell.workspace = true
+bv-audio.workspace = true
+bv-mqtt.workspace = true
+bv-ui-kit.workspace = true
+
+[dev-dependencies]
+bv-audio = { workspace = true, features = ["fake"] }
+bv-mqtt = { workspace = true, features = ["test-broker"] }

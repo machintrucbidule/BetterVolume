@@ -1,0 +1,36 @@
+[package]
+name = "bv-audio"
+description = "BetterVolume Core Audio wrapper: devices, default switching, volumes, sessions, events"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# An in-memory engine implementing `AudioEngine`, for tests of the crates that use the
+# engine. Never enabled in the shipped executable.
+fake = []
+
+[dependencies]
+bv-core.workspace = true
+windows-core.workspace = true
+
+[dependencies.windows]
+workspace = true
+features = [
+    "Win32_Devices_FunctionDiscovery",
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Services",
+    "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_PropertiesSystem",
+]

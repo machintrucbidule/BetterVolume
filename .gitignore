@@ -1,0 +1,11 @@
+# Build outputs
+/target/
+
+# OS / editors
+Thumbs.db
+Desktop.ini
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
