@@ -127,7 +127,10 @@ Wording: **must** = required for v1.
   slider + numeric value. Same slider behaviour as FR-051.
 - **FR-063** Rows appear and disappear live as applications start/stop using audio, without
   moving the control currently under the pointer while it is being dragged.
-- **FR-064** Stable ordering: System sounds first, then alphabetical by friendly name.
+- **FR-064** Stable ordering: the order of the Applications page (FR-098). Until the user
+  orders them: alphabetical by friendly name, System sounds last; an application never seen
+  before is added at the end (just before System sounds while System sounds is last).
+  Applications excluded on that page are not listed (FR-097).
 - **FR-065** No application: the section shows only "System sounds" (when Windows has no
   System sounds session either, there is nothing to control: only the section header
   shows).
@@ -149,7 +152,7 @@ Wording: **must** = required for v1.
 ## 5. Settings window
 
 - **FR-070** Standard resizable window in Windows 11 Settings style: navigation on the left
-  (General, Devices, Home Assistant, About), cards on the right. Changes apply immediately
+  (General, Devices, Applications, Home Assistant, About), cards on the right. Changes apply immediately
   (no global Save button), except the MQTT connection form which has Test and Save.
 - **FR-071** Opens automatically on the very first launch only; later via the context menu
   or the flyout footer. Exceptions: once at the next start of an installation that has not
@@ -174,6 +177,10 @@ Wording: **must** = required for v1.
   default).
 - **FR-081** Volume bubble of the wheel and middle click (FR-017): on/off (default on).
 - **FR-082** Flyout height: "Whole screen height" (default) or "Fits the content" (FR-023).
+- **FR-083** Tray icon size: "Same as Windows" (default) or "Large": the icon is drawn
+  bigger inside the notification-area slot, filling it like the other icons there
+  (network, updates), in both icon styles (FR-011). The exact size is validated on
+  renderings at every Windows scaling.
 
 ### 5.2 Devices
 - **FR-085** Two lists (outputs; inputs when microphone management is on), each row: drag
@@ -188,6 +195,18 @@ Wording: **must** = required for v1.
 - **FR-089** Known but currently unavailable devices stay listed (marked as disconnected)
   so they can be configured, under the last name Windows gave them; each can be forgotten
   manually, after a confirmation.
+
+### 5.6 Applications (shown in the navigation between Devices and Home Assistant)
+- **FR-096** One list of every application that has played sound on this PC, remembered
+  (its display name and executable only), plus "System sounds". Each row: drag handle,
+  icon, name, show/hide. A remembered application can be forgotten, after a confirmation
+  (System sounds cannot).
+- **FR-097** Hiding ("excluding") an application removes it from the flyout's application
+  list only: its sound and volume are not touched. System sounds can be hidden too.
+- **FR-098** Reorder by drag-and-drop and by keyboard; the order applies to the flyout
+  (FR-064). Default order and new applications: FR-064.
+- **FR-099** Remembered applications are kept in the settings file only; they are never
+  published (Home Assistant has no per-application control) nor written to the log.
 
 ### 5.3 Home Assistant
 - **FR-090** Enable switch; broker address, port, optional encrypted connection, user name,
@@ -263,7 +282,8 @@ Wording: **must** = required for v1.
 
 ## 9. Languages
 
-- **FR-120** Ships with English and French. All user-visible text comes from translation
+- **FR-120** Ships with English and French; version 2.1.0 adds German, Spanish, Italian,
+  Portuguese (Brazil), Dutch, Polish, Japanese and Simplified Chinese. All user-visible text comes from translation
   files; adding a language requires only a new file.
 - **FR-121** Automatic mode picks the OS display language, falling back to English.
 - **FR-122** Custom device names and application names are never translated.
@@ -316,5 +336,5 @@ Wording: **must** = required for v1.
 ## 13. Out of scope for v1
 
 Global keyboard shortcuts · per-application volume in Home Assistant · routing individual
-applications to different devices · Windows 10 · languages beyond English/French ·
+applications to different devices · Windows 10 · right-to-left languages ·
 code signing · silent auto-update.
