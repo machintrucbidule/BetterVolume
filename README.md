@@ -54,15 +54,17 @@ Download one of the two files from the
 ### The Windows warning on first run
 
 BetterVolume's files are not digitally signed (a code-signing certificate costs money
-every year). Windows and your browser therefore treat them as unknown the first time:
+every year), so Windows does not know their publisher. When you open the file the first
+time, Windows shows:
 
-- **The browser** may say the file "isn't commonly downloaded". Open the download list,
-  choose **Keep** (in Microsoft Edge: the **…** menu, **Keep**, then **Show more** and
-  **Keep anyway**).
-- **Windows** may show *"Windows protected your PC"* when you open the file. Click
-  **More info**, then **Run anyway**.
+> **Windows protected your PC**
+> Microsoft Defender SmartScreen prevented an unrecognized app from starting. Running
+> this app might put your PC at risk.
+> App: BetterVolume-2.0.0-setup.exe — Publisher: Unknown publisher
 
-This happens once per file. Each release page lists the SHA-256 digest of its files, and
+Click **More info**, then **Run anyway**. This happens once per file. Some browsers may
+also say, while downloading, that the file "isn't commonly downloaded": open the
+download list and choose **Keep**. Each release page lists the SHA-256 digest of its files, and
 the program is built from this repository by the
 [release workflow](.github/workflows/release.yml), so you can check what you run.
 
