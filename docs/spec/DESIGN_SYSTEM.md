@@ -48,28 +48,36 @@ animation effects, text scaling.
   (three), as Windows 11. Below full volume the waves not reached are drawn too, in
   the "disabled text" colour (`#5DFFFFFF` dark, `#5C000000` light, GrayText in high
   contrast), under the reached ones.
-- Picture "device" (FR-011): the speaker part of the Windows glyph (x 0–7 DIP) is replaced
-  by a drawing of the device type — speakers, headphones, headset, display — in natural
-  proportions (never stretched). To give it room the waves or the cross, cut from the
-  Windows glyph at x = 7.55 DIP (middle of the gap), are scaled to 3/4 about the middle
-  of the icon's right edge (16, 8) (`tray::DEVICE_WAVES_SCALE`), and the device fills
-  the room left of them up to the Windows gap of 1.1 DIP: 8.975 DIP wide
-  (`tray::DEVICE_WIDTH`). Other device types keep the speaker. Automated pixel tests
-  check, at every Windows scaling, that nothing of the original speaker remains, that the
-  device is wider than the speaker, and that no pixel column holds both the device and
-  the waves (a column of nothing between them from 150 %).
-- Look "BetterVolume" (FR-084): the speaker is the one of the application icon (its
-  16–32 px drawing, without the two roads), filled, fitted in the Windows speaker's place
-  (x 0–7 DIP, centred on y = 8); the waves and the cross keep the Windows glyph shapes.
-  Everything is painted with a linear gradient of accent shades, top to bottom
-  (`TrayColors::accent`): accent light 3 to the accent on a dark taskbar, the accent to
-  accent dark 2 on a light one; the waves not reached are a pale accent (accent light 2
-  at 32 % on a dark taskbar, dark 1 at 32 % on a light one). Devices are filled drawings
-  in the gradient (the speaker cabinet with its drivers cut out, a thick headband and
-  filled cups, a full screen). Without a device the icon is dimmed as in the Windows
-  look. High contrast draws the Windows look (system colours only). Pixel tests check the
-  colours follow the accent, the gradient, the pale waves, the speaker's place and the
-  high-contrast fallback. Look "Windows": as above, the Windows glyph in one colour.
+- Device drawings (FR-011): speakers, headphones, headset, display, filled (the speaker
+  cabinet with its drivers cut out, a thick headband and filled cups, a full screen on
+  its stand), always in their natural proportions (`tray::proportions`: cabinet 1.4 times
+  as tall as wide, headphones square, screen 0.62 plus a 0.28 stand), never taller than
+  the Windows speaker (11.24 DIP), centred on y = 8. Other device types keep the speaker.
+  A translucent colour (the light taskbar's `#E4000000`, the dimmed one) is applied to
+  a drawing as a whole (`Canvas::with_opacity`), so its overlapping parts stay even.
+- Look "Windows": the Windows glyph in one colour. With the picture "device", the glyph
+  is unchanged (its waves or cross at their own size, cut at x = 7.55 DIP, the middle of
+  the gap) and only its speaker (x 0–7 DIP) is replaced by the device drawing, 7 DIP
+  wide, in the glyph colour.
+- Look "BetterVolume" (FR-084): our own waves (`tray::waves`): three arcs of ±56° about a
+  centre on y = 8, stroke 1 DIP (the Windows one), 1.45 DIP apart (closer, they merged
+  into one stroke at the real size), the outer one 0.2 DIP from the right edge; the
+  cross of the muted level is two 1-DIP strokes there. Left of them, 1 DIP away: with the
+  speaker, the speaker of the application icon (its 16–32 px drawing, without the two
+  roads), 7.6 DIP wide; with a device, the arcs start smaller (first radius 1.4 instead
+  of 1.9) and the device drawing gets 8.28 DIP, more than half the icon. Everything is
+  painted with one vertical gradient of accent shades, from y = 2 to y = 14 (`TrayColors::accent`):
+  accent light 3 to light 1 on a dark taskbar, accent dark 1 to dark 3 on a light one;
+  the waves not reached are a pale accent (accent light 2 at 32 % on a dark taskbar,
+  dark 1 at 32 % on a light one). Without a device the icon is dimmed as in the Windows
+  look. High contrast draws the Windows look (system colours only).
+- Pixel tests, at every Windows scaling: nothing of the Windows speaker remains next to a
+  device; a column of nothing between the picture and the waves (from 150 %); the
+  Windows look with a device keeps the Windows waves exactly; our three waves are three
+  separate strokes across the middle row (from 150 %); the device proportions; the
+  BetterVolume device wider than half the icon; the colours follow the accent, the
+  gradient, the pale waves, the application speaker at least as large as the Windows
+  one, and the high-contrast fallback.
 - Size "Large" (FR-083): the drawing above (any picture and look) stretched vertically by 20/17
   about y = 8 DIP (`tray::LARGE_STRETCH`): the loudest step's outer wave (1.25 to
   14.75 DIP) then spans 0.06 to 15.94 DIP. Widths, strokes and the level cut are

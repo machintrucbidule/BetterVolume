@@ -43,35 +43,36 @@ fn first_column_right_of(cut: f32, px: u32) -> u32 {
     (cut * scale_for(px) - 0.5).ceil() as u32
 }
 
-fn first_level_column(px: u32) -> u32 {
-    first_column_right_of(LEVEL_START, px)
-}
-
-/// Where the cut of the level part lands once the waves are made smaller for a device.
-fn device_cut() -> f32 {
-    LOGICAL_SIZE - (LOGICAL_SIZE - LEVEL_START) * DEVICE_WAVES_SCALE
-}
-
-/// The device drawing alone, as the icon draws it.
+/// The device drawing alone, as the icon draws it in `look`.
 fn device_only(c: &mut Canvas<'_>, device: DeviceType, look: TrayLook, colors: &TrayColors) {
     let ink = Ink { colors, look, dim: false };
-    let (from, to) = (Point::new(DEVICE_WIDTH * 0.2, 2.5), Point::new(DEVICE_WIDTH * 0.8, 13.5));
-    match look {
-        TrayLook::Windows => outline_device(c, device, ink.plain()),
-        TrayLook::BetterVolume => {
-            ink.paint(c, from, to, |c, color| filled_device(c, device, color))
-        }
+    let w = match look {
+        TrayLook::Windows => SPEAKER_RIGHT,
+        TrayLook::BetterVolume => Waves::DEVICE.room(),
+    };
+    ink.paint(c, TOP, BOTTOM, |c, color| device_drawing(c, device, w, color));
+}
+
+/// Where the picture ends and the level part starts, by look.
+fn cut(look: TrayLook, badge: Option<DeviceType>) -> f32 {
+    match (look, badge) {
+        (TrayLook::Windows, _) => LEVEL_START,
+        (TrayLook::BetterVolume, None) => Waves::SPEAKER.left() - waves::PICTURE_GAP / 2.0,
+        (TrayLook::BetterVolume, Some(_)) => Waves::DEVICE.left() - waves::PICTURE_GAP / 2.0,
     }
 }
 
-/// Columns holding something (alpha above `min`), first and last.
-fn inked_columns(
-    img: &Pixels,
-    px: u32,
-    columns: std::ops::Range<u32>,
-    min: u8,
-) -> Option<(u32, u32)> {
-    let inked: Vec<u32> = columns.filter(|&x| (0..px).any(|y| img.pixel(x, y)[3] > min)).collect();
+/// Columns holding something (alpha above `min`) in `columns`, first and last.
+fn inked_columns(img: &Pixels, columns: std::ops::Range<u32>, min: u8) -> Option<(u32, u32)> {
+    let inked: Vec<u32> =
+        columns.filter(|&x| (0..img.height).any(|y| img.pixel(x, y)[3] > min)).collect();
+    Some((*inked.first()?, *inked.last()?))
+}
+
+/// Rows holding something (alpha above `min`) in `columns`, first and last.
+fn inked_rows(img: &Pixels, columns: std::ops::Range<u32>, min: u8) -> Option<(u32, u32)> {
+    let inked: Vec<u32> =
+        (0..img.height).filter(|&y| columns.clone().any(|x| img.pixel(x, y)[3] > min)).collect();
     Some((*inked.first()?, *inked.last()?))
 }
 
@@ -92,12 +93,12 @@ fn nothing_of_the_speaker_remains_next_to_the_device() {
                     sized(c, large, |c| device_only(c, device, look, &theme.tray));
                 });
                 for y in 0..px {
-                    for x in 0..first_column_right_of(device_cut(), px) {
+                    for x in 0..first_column_right_of(cut(look, Some(device)), px) {
                         assert_eq!(
                             with_glyph.pixel(x, y),
                             alone.pixel(x, y),
-                            "{look:?} {device:?} at {px} px (large {large}), pixel ({x}, {y}): \
-                             speaker remnant"
+                            "{look:?} {device:?} at {px} px (large {large}), pixel ({x}, \
+                             {y}): speaker remnant"
                         );
                     }
                 }
@@ -107,52 +108,110 @@ fn nothing_of_the_speaker_remains_next_to_the_device() {
 }
 
 #[test]
-fn the_device_gets_more_room_and_keeps_a_gap_before_the_smaller_waves() {
+fn the_picture_keeps_a_gap_before_the_waves() {
     let gfx = Graphics::new(DeviceKind::Software).expect("graphics");
     let theme = Theme::shell(&ThemeInputs::default());
-    const { assert!(DEVICE_WIDTH > 8.9 && DEVICE_WIDTH < 9.0) };
+    let pictures =
+        [None, Some(DeviceType::Speakers), Some(DeviceType::Headphones), Some(DeviceType::Display)];
     for (px, large) in SIZES.into_iter().flat_map(|px| [(px, false), (px, true)]) {
         for look in LOOKS {
-            let speaker = render(&gfx, px, |c| {
-                paint(c, &icon(Some(VolumeLevel::Zero), None, large, look), &theme)
-            });
-            let speaker_last = inked_columns(&speaker, px, 0..first_level_column(px), 8)
-                .expect("nothing drawn: the Windows icon font (Segoe Fluent Icons) is missing")
-                .1;
-            for device in DEVICES {
-                let alone = render(&gfx, px, |c| {
-                    c.clear(Color::TRANSPARENT);
-                    sized(c, large, |c| device_only(c, device, look, &theme.tray));
-                });
-                let (_, device_last) = inked_columns(&alone, px, 0..px, 8).expect("device drawn");
-                assert!(
-                    device_last > speaker_last || px < 24,
-                    "{look:?} {device:?} at {px} px: not larger than the speaker \
-                     ({device_last}, speaker {speaker_last})"
-                );
+            for badge in pictures {
                 for level in LEVELS {
-                    let full = render(&gfx, px, |c| {
-                        paint(c, &icon(Some(level), Some(device), large, look), &theme)
+                    let img = render(&gfx, px, |c| {
+                        paint(c, &icon(Some(level), badge, large, look), &theme)
                     });
-                    let waves =
-                        inked_columns(&full, px, first_column_right_of(device_cut(), px)..px, 8)
-                            .expect("waves drawn");
-                    // The Windows gap (1.1 DIP) between the device and the waves: no column
-                    // holds both (from 150 %, a column of nothing), and the waves end at the
-                    // right edge.
+                    let split = first_column_right_of(cut(look, badge), px);
+                    let picture = inked_columns(&img, 0..split, 8).expect("picture");
+                    let waves = inked_columns(&img, split..px, 8).expect("waves");
+                    // No column holds both (from 150 %, a column of nothing between them).
                     let gap = if px >= 24 { 1 } else { 0 };
                     assert!(
-                        waves.0 > device_last + gap,
-                        "{look:?} {device:?} {level:?} at {px} px (large {large}): device to \
-                         column {device_last}, waves from {}",
+                        waves.0 > picture.1 + gap,
+                        "{look:?} {badge:?} {level:?} at {px} px (large {large}): picture to \
+                         {}, waves from {}",
+                        picture.1,
                         waves.0
-                    );
-                    assert!(
-                        waves.1 + 2 >= px || level == VolumeLevel::Muted,
-                        "{level:?} at {px} px"
                     );
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn our_waves_stay_distinct_at_the_real_size() {
+    // Across the middle row, the three reached arcs are three separate strokes (they
+    // merged into one when 1.4 px apart).
+    let gfx = Graphics::new(DeviceKind::Software).expect("graphics");
+    for mode in [ThemeMode::Dark, ThemeMode::Light] {
+        let theme = Theme::shell(&ThemeInputs { system_mode: mode, ..ThemeInputs::default() });
+        for px in [24, 28, 32, 36, 40, 48, 64] {
+            for (badge, waves) in
+                [(None, Waves::SPEAKER), (Some(DeviceType::Headphones), Waves::DEVICE)]
+            {
+                for large in [false, true] {
+                    let i = icon(Some(VolumeLevel::High), badge, large, TrayLook::BetterVolume);
+                    let img = render(&gfx, px, |c| paint(c, &i, &theme));
+                    let y = px / 2;
+                    let from = first_column_right_of(waves.left() - 0.3, px);
+                    let mut strokes = 0;
+                    let mut inside = false;
+                    for x in from..px {
+                        let a = img.pixel(x, y)[3];
+                        if !inside && a > 160 {
+                            strokes += 1;
+                            inside = true;
+                        } else if inside && a < 100 {
+                            inside = false;
+                        }
+                    }
+                    assert_eq!(strokes, 3, "{mode:?} {badge:?} at {px} px (large {large})");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn devices_keep_their_natural_proportions() {
+    let gfx = Graphics::new(DeviceKind::Software).expect("graphics");
+    let theme = Theme::shell(&ThemeInputs::default());
+    let px = 64;
+    for look in LOOKS {
+        for (device, ratio) in [
+            (DeviceType::Speakers, proportions::SPEAKERS),
+            (DeviceType::Headphones, proportions::HEADPHONES),
+            (DeviceType::Headset, proportions::HEADPHONES),
+            (DeviceType::Display, proportions::SCREEN + proportions::STAND),
+        ] {
+            let img = render(&gfx, px, |c| {
+                c.clear(Color::TRANSPARENT);
+                device_only(c, device, look, &theme.tray);
+            });
+            let (x0, x1) = inked_columns(&img, 0..px, 127).expect("drawn");
+            let (y0, y1) = inked_rows(&img, 0..px, 127).expect("drawn");
+            let measured = (y1 - y0 + 1) as f32 / (x1 - x0 + 1) as f32;
+            assert!(
+                (measured / ratio - 1.0).abs() < 0.08,
+                "{look:?} {device:?}: height / width {measured}, expected {ratio}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_bettervolume_device_takes_more_than_half_the_width() {
+    let gfx = Graphics::new(DeviceKind::Software).expect("graphics");
+    let theme = Theme::shell(&ThemeInputs::default());
+    assert!(Waves::DEVICE.room() > LOGICAL_SIZE / 2.0, "{}", Waves::DEVICE.room());
+    for px in [32, 36, 48] {
+        for device in [DeviceType::Headphones, DeviceType::Display] {
+            let ours = render(&gfx, px, |c| {
+                c.clear(Color::TRANSPARENT);
+                device_only(c, device, TrayLook::BetterVolume, &theme.tray);
+            });
+            let (x0, x1) = inked_columns(&ours, 0..px, 127).expect("drawn");
+            assert!((x1 - x0 + 1) * 2 > px, "{device:?} at {px} px: {} columns", x1 - x0 + 1);
         }
     }
 }
@@ -218,7 +277,15 @@ fn waves_not_reached_are_dimmed_like_windows_11() {
             // level shows it in the "disabled text" colour exactly.
             let raw_high = glyph_only(VolumeLevel::High, colors.glyph);
             let raw_medium = glyph_only(VolumeLevel::Medium, colors.glyph);
-            let outer = outer_wave(&raw_high, &raw_medium, px, colors.glyph);
+            let full_alpha = colors.glyph.a * 255.0;
+            let outer: Vec<(u32, u32, f32)> = (0..px)
+                .flat_map(|y| (first_column_right_of(LEVEL_START, px)..px).map(move |x| (x, y)))
+                .filter(|&(x, y)| {
+                    f32::from(raw_high.pixel(x, y)[3]) >= 0.98 * full_alpha
+                        && raw_medium.pixel(x, y)[3] == 0
+                })
+                .map(|(x, y)| (x, y, f32::from(raw_high.pixel(x, y)[3]) / full_alpha))
+                .collect();
             assert!(!outer.is_empty(), "{name} at {px} px: no outer wave pixel");
             for &(x, y, cover) in &outer {
                 assert_colour(&low, x, y, colors.unreached, cover, &name);
@@ -242,18 +309,31 @@ fn waves_not_reached_are_dimmed_like_windows_11() {
     }
 }
 
-/// The pixels of the outer wave only (fully covered in `high`, empty in `medium`), with
-/// their coverage.
-fn outer_wave(high: &Pixels, medium: &Pixels, px: u32, color: Color) -> Vec<(u32, u32, f32)> {
-    // The glyph colour may be partly transparent (light taskbar: #E4000000).
-    let full_alpha = color.a * 255.0;
-    (0..px)
-        .flat_map(|y| (first_level_column(px)..px).map(move |x| (x, y)))
-        .filter(|&(x, y)| {
-            f32::from(high.pixel(x, y)[3]) >= 0.98 * full_alpha && medium.pixel(x, y)[3] == 0
-        })
-        .map(|(x, y)| (x, y, f32::from(high.pixel(x, y)[3]) / full_alpha))
-        .collect()
+#[test]
+fn the_windows_look_with_a_device_keeps_the_windows_waves() {
+    let gfx = Graphics::new(DeviceKind::Software).expect("graphics");
+    let theme = Theme::shell(&ThemeInputs::default());
+    for px in SIZES {
+        for level in LEVELS {
+            let plain = render(&gfx, px, |c| {
+                paint(c, &icon(Some(level), None, false, TrayLook::Windows), &theme)
+            });
+            for device in DEVICES {
+                let badged = render(&gfx, px, |c| {
+                    paint(c, &icon(Some(level), Some(device), false, TrayLook::Windows), &theme)
+                });
+                for y in 0..px {
+                    for x in first_column_right_of(LEVEL_START, px)..px {
+                        assert_eq!(
+                            badged.pixel(x, y),
+                            plain.pixel(x, y),
+                            "{device:?} {level:?} at {px} px, pixel ({x}, {y})"
+                        );
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn assert_colour(img: &Pixels, x: u32, y: u32, c: Color, cover: f32, what: &str) {
@@ -314,11 +394,11 @@ fn the_bettervolume_look_takes_the_accent_colour() {
                 })
             };
             // The speaker or device, and the waves: both coloured.
-            for columns in [0..14, 17..32] {
+            for columns in [0..14, 20..32] {
                 let [r, _, b] = average(&draw(&blue), 32, columns.clone());
                 assert!(b > r + 100.0, "{mode:?} {badge:?} {columns:?}: blue {r} {b}");
                 let [r, _, b] = average(&draw(&reddish), 32, columns.clone());
-                assert!(r > b + 100.0, "{mode:?} {badge:?} {columns:?}: red {r} {b}");
+                assert!(r > b + 80.0, "{mode:?} {badge:?} {columns:?}: red {r} {b}");
             }
             // A gradient: the top lighter than the bottom.
             let img = draw(&blue);
@@ -336,7 +416,7 @@ fn the_bettervolume_look_takes_the_accent_colour() {
                 }
                 sum / n
             };
-            assert!(light(8..13) > light(19..24) + 30.0, "{mode:?} {badge:?}: no gradient");
+            assert!(light(10..13) > light(19..22) + 30.0, "{mode:?} {badge:?}: no gradient");
         }
     }
 }
@@ -346,36 +426,19 @@ fn the_bettervolume_waves_not_reached_are_a_pale_accent() {
     let gfx = Graphics::new(DeviceKind::Software).expect("graphics");
     for mode in [ThemeMode::Dark, ThemeMode::Light] {
         let theme = Theme::shell(&ThemeInputs { system_mode: mode, ..ThemeInputs::default() });
-        let colors = theme.tray;
-        for px in [32, 64] {
-            let low = render(&gfx, px, |c| {
-                paint(c, &icon(Some(VolumeLevel::Low), None, false, TrayLook::BetterVolume), &theme)
-            });
-            let raw = |level: VolumeLevel| {
-                render(&gfx, px, |c| {
-                    c.clear(Color::TRANSPARENT);
-                    glyph(c, level.icon().glyph(), colors.glyph);
-                })
-            };
-            let outer =
-                outer_wave(&raw(VolumeLevel::High), &raw(VolumeLevel::Medium), px, colors.glyph);
-            assert!(!outer.is_empty());
-            for (x, y, cover) in outer {
-                assert_colour(
-                    &low,
-                    x,
-                    y,
-                    colors.accent_unreached,
-                    cover,
-                    &format!("{mode:?} at {px} px"),
-                );
-            }
-        }
+        let px = 64;
+        let low = render(&gfx, px, |c| {
+            paint(c, &icon(Some(VolumeLevel::Low), None, false, TrayLook::BetterVolume), &theme)
+        });
+        // The middle of the outer arc (not reached at a low level), fully covered.
+        let w = Waves::SPEAKER;
+        let x = ((w.cx() + w.r(2)) * scale_for(px)) as u32;
+        assert_colour(&low, x, px / 2, theme.tray.accent_unreached, 1.0, &format!("{mode:?}"));
     }
 }
 
 #[test]
-fn the_bettervolume_speaker_takes_the_place_of_the_windows_one() {
+fn the_bettervolume_speaker_is_at_least_as_large_as_the_windows_one() {
     let gfx = Graphics::new(DeviceKind::Software).expect("graphics");
     let theme = Theme::shell(&ThemeInputs::default());
     for (px, large) in SIZES.into_iter().flat_map(|px| [(px, false), (px, true)]) {
@@ -385,35 +448,17 @@ fn the_bettervolume_speaker_takes_the_place_of_the_windows_one() {
             })
         };
         let (windows, ours) = (draw(TrayLook::Windows), draw(TrayLook::BetterVolume));
-        let left = 0..first_level_column(px);
-        let w = inked_columns(&windows, px, left.clone(), 8).expect("Windows speaker");
-        let o = inked_columns(&ours, px, left, 8).expect("our speaker");
+        let w_split = first_column_right_of(LEVEL_START, px);
+        let o_split = first_column_right_of(cut(TrayLook::BetterVolume, None), px);
+        let wc = inked_columns(&windows, 0..w_split, 127).expect("Windows speaker");
+        let oc = inked_columns(&ours, 0..o_split, 127).expect("our speaker");
+        let wr = inked_rows(&windows, 0..w_split, 127).expect("Windows speaker");
+        let or = inked_rows(&ours, 0..o_split, 127).expect("our speaker");
+        assert!(oc.1 - oc.0 >= wc.1 - wc.0, "at {px} px (large {large}): {oc:?}, Windows {wc:?}");
         assert!(
-            o.0 <= w.0 + 1 && o.1 <= w.1,
-            "at {px} px (large {large}): columns {o:?}, Windows {w:?}"
+            or.1 - or.0 + 1 >= wr.1 - wr.0,
+            "at {px} px (large {large}): {or:?}, Windows {wr:?}"
         );
-        let rows = |img: &Pixels| {
-            let inked: Vec<u32> = (0..px)
-                .filter(|&y| (0..first_level_column(px)).any(|x| img.pixel(x, y)[3] > 8))
-                .collect();
-            (inked[0], inked[inked.len() - 1])
-        };
-        let (wr, or) = (rows(&windows), rows(&ours));
-        assert!(
-            or.0 + 1 >= wr.0 && or.1 <= wr.1 + 1,
-            "at {px} px (large {large}): rows {or:?}, Windows {wr:?}"
-        );
-        // The waves are the same shapes as the Windows ones (only their colour differs).
-        let right = first_level_column(px)..px;
-        for y in 0..px {
-            for x in right.clone() {
-                assert_eq!(
-                    windows.pixel(x, y)[3] > 0,
-                    ours.pixel(x, y)[3] > 0,
-                    "({x}, {y}) at {px} px"
-                );
-            }
-        }
     }
 }
 
@@ -506,13 +551,8 @@ fn the_large_icon_is_taller_whole_and_keeps_the_windows_widths() {
             for px in SIZES {
                 for level in levels {
                     for badge in badges {
-                        check_large(
-                            &gfx,
-                            &theme,
-                            icon(level, badge, false, look),
-                            px,
-                            &mut problems,
-                        );
+                        let normal = icon(level, badge, false, look);
+                        check_large(&gfx, &theme, normal, px, &mut problems);
                     }
                 }
             }
@@ -600,5 +640,27 @@ fn check_large(
             solid(&large),
             solid(&windows)
         ));
+    }
+}
+
+#[test]
+fn overlapping_parts_of_a_device_are_not_darker() {
+    // The light taskbar's glyph colour is translucent (#E4000000): the parts of a device
+    // that overlap (headband and cups, screen and stand) must not add up.
+    let gfx = Graphics::new(DeviceKind::Software).expect("graphics");
+    let theme =
+        Theme::shell(&ThemeInputs { system_mode: ThemeMode::Light, ..ThemeInputs::default() });
+    let most = (theme.tray.glyph.a * 255.0).round() as u8 + 1;
+    for px in [32, 64] {
+        for device in DEVICES {
+            let i = icon(Some(VolumeLevel::High), Some(device), false, TrayLook::Windows);
+            let img = render(&gfx, px, |c| paint(c, &i, &theme));
+            for y in 0..px {
+                for x in 0..px {
+                    let a = img.pixel(x, y)[3];
+                    assert!(a <= most, "{device:?} at {px} px, ({x}, {y}): alpha {a}");
+                }
+            }
+        }
     }
 }

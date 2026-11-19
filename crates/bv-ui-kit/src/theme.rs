@@ -205,7 +205,7 @@ impl TrayColors {
             ThemeMode::Dark => TrayColors {
                 glyph: Color::WHITE,
                 unreached: Color::argb(0x5DFF_FFFF),
-                accent: [a.light3, a.base],
+                accent: [a.light3, a.light1],
                 accent_unreached: a.light2.with_alpha(0.32),
                 taskbar: Color::rgb(0x1C1C1C),
                 high_contrast: false,
@@ -213,7 +213,7 @@ impl TrayColors {
             ThemeMode::Light => TrayColors {
                 glyph: Color::argb(0xE400_0000),
                 unreached: Color::argb(0x5C00_0000),
-                accent: [a.base, a.dark2],
+                accent: [a.dark1, a.dark3],
                 accent_unreached: a.dark1.with_alpha(0.32),
                 taskbar: Color::rgb(0xEEEEEE),
                 high_contrast: false,
@@ -604,10 +604,10 @@ mod tests {
         // The BetterVolume tray look (FR-084): lighter shades on a dark taskbar.
         let a = AccentPalette::DEFAULT;
         inputs.system_mode = ThemeMode::Dark;
-        assert_eq!(Theme::shell(&inputs).tray.accent, [a.light3, a.base]);
+        assert_eq!(Theme::shell(&inputs).tray.accent, [a.light3, a.light1]);
         assert_eq!(Theme::shell(&inputs).tray.accent_unreached, a.light2.with_alpha(0.32));
         inputs.system_mode = ThemeMode::Light;
-        assert_eq!(Theme::shell(&inputs).tray.accent, [a.base, a.dark2]);
+        assert_eq!(Theme::shell(&inputs).tray.accent, [a.dark1, a.dark3]);
         assert_eq!(Theme::shell(&inputs).tray.accent_unreached, a.dark1.with_alpha(0.32));
     }
 
