@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon/BetterVolume.svg" alt="BetterVolume icon: the Windows speaker whose sound takes one of two roads" width="112">
+</p>
+
 # BetterVolume
 
 [![Latest release](https://img.shields.io/github/v/release/machintrucbidule/BetterVolume?label=release)](https://github.com/machintrucbidule/BetterVolume/releases/latest)
