@@ -1,7 +1,8 @@
 //! The Windows implementation of [`AudioEngine`].
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::mpsc::{self, Receiver};
+use std::time::Instant;
 
 use windows::Win32::Devices::FunctionDiscovery::{
     PKEY_Device_EnumeratorName, PKEY_Device_FriendlyName,
@@ -17,7 +18,7 @@ use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL, STGM_READ};
 use bv_core::audio::bus_from_enumerator;
 use bv_core::volume;
 
-use crate::activity::{follow_default, hear, ActivityWatch};
+use crate::activity::{ActivityWatch, Heard};
 use crate::com::{
     audio_error, pcwstr, string_property, take_string, u32_property, wide, Apartment,
 };
@@ -107,8 +108,10 @@ pub struct Engine {
     sessions_wanted: bool,
     /// Friendly application names, kept across session watches.
     names: crate::sessions::Names,
-    /// Where each process was last heard: process identifier to output device.
-    heard: HashMap<u32, String>,
+    /// Where each process was last heard, and the last move of the current output.
+    heard: Heard,
+    /// The current output the activity watch was last asked to follow.
+    output: Option<String>,
     /// Processes already looked at for the Applications page (FR-096): each playing
     /// process is identified once.
     identified: HashSet<u32>,
@@ -139,7 +142,8 @@ impl Engine {
             generation: 0,
             sessions_wanted: false,
             names: crate::sessions::Names::default(),
-            heard: HashMap::new(),
+            heard: Heard::default(),
+            output: None,
             identified: HashSet::new(),
             heard_apps: Vec::new(),
             state: State::default(),
@@ -273,12 +277,15 @@ impl Engine {
         let wanted = self.current(Flow::Output).map(str::to_owned);
         let generation = self.next_generation();
         let sink = self.sink.clone();
-        let mut moved_from = None;
+        // Kept apart from the watch, which may fail to start or be dropped with the audio
+        // objects: a restart of the audio service is not a move. A moment without any
+        // output is not one either: the output before it is the one left.
+        if let Some(to) = wanted.as_deref().filter(|to| self.output.as_deref() != Some(to)) {
+            self.heard.moved(self.output.as_deref(), to, Instant::now());
+            self.output = Some(to.to_owned());
+        }
         if let Some(core) = self.core.as_mut() {
             let same = core.activity.as_ref().map(|w| w.device_id.as_str()) == wanted.as_deref();
-            if !same {
-                moved_from = core.activity.as_ref().map(|w| w.device_id.clone());
-            }
             if !same || force {
                 core.activity = None;
                 core.activity = wanted.as_deref().and_then(|id| {
@@ -287,19 +294,15 @@ impl Engine {
                 });
             }
         }
-        self.scan_activity(moved_from.as_deref());
+        self.scan_activity();
     }
 
-    /// Records which processes play on the current output now. `moved_from`: the current
-    /// output just replaced that one.
-    fn scan_activity(&mut self, moved_from: Option<&str>) {
+    /// Records which processes play on the current output now.
+    fn scan_activity(&mut self) {
         let Some(watch) = self.core.as_mut().and_then(|c| c.activity.as_mut()) else { return };
         let (playing, present) = watch.scan();
         let device = watch.device_id.clone();
-        if let Some(from) = moved_from {
-            follow_default(&mut self.heard, from, &device, &present);
-        }
-        hear(&mut self.heard, &device, &playing, &present);
+        self.heard.look(&device, &playing, &present, Instant::now());
         self.identify(&playing);
     }
 
@@ -331,11 +334,11 @@ impl Engine {
         let streams = match read {
             Some((streams, device, playing)) => {
                 let present: Vec<u32> = streams.iter().map(|s| s.process).collect();
-                hear(&mut self.heard, &device, &playing, &present);
+                self.heard.look(&device, &playing, &present, Instant::now());
                 streams
                     .into_iter()
                     .map(|mut s| {
-                        s.heard_here = self.heard.get(&s.process) == Some(&device);
+                        s.heard_here = self.heard.get(s.process) == Some(device.as_str());
                         s
                     })
                     .collect()
@@ -536,7 +539,7 @@ impl AudioEngine for Engine {
         }
         if activity {
             // Where applications were last heard changed: the list may show other rows.
-            self.scan_activity(None);
+            self.scan_activity();
         }
         if sessions || activity {
             if sessions {

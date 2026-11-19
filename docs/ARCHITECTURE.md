@@ -219,8 +219,14 @@ expanded).
   state of the sessions of the current output is followed (session created, state
   changed). The engine remembers, per process, the output where it was
   last heard playing; published streams carry `heard_here`, and the application list
-  leaves out sessions not heard on the current output (`bv_core::apps::rows`). A process
-  heard playing for the first time is identified once (executable path and name; one
+  leaves out sessions not heard on the current output (`bv_core::apps::rows`). It also
+  remembers the last move of the current output (`activity::Heard`): for 30 s
+  (`FOLLOW_WINDOW`), every look at the output moved to gives it the processes last heard
+  on the output left that have a session there, including sessions that appear after the
+  switch (Windows moves the applications to a device just plugged in a moment after
+  making it the default); quick successive moves keep the outputs left before. The output
+  followed is kept apart from the watch, so a restart of the audio service is no move.
+  A process heard playing for the first time is identified once (executable path and name; one
   that cannot be opened is left to the session list) and handed out by
   `take_heard_apps`, so the Applications page remembers it even while the flyout is
   closed (FR-096).

@@ -125,7 +125,10 @@ Wording: **must** = required for v1.
   are grouped and controlled together. An application is recognised by the file name of
   its executable (case ignored), not its folder: a program that moves to a new versioned
   folder at each update stays the same application, and two programs with the same file
-  name are one.
+  name are one. When the output changes, an application last heard on the previous output
+  that comes to the new one (as most applications do, sometimes a moment after the switch,
+  for example on a device just plugged in) keeps its row there at once, without waiting to
+  be heard again.
 - **FR-062** Row = application icon (click toggles mute for that app) + friendly name +
   slider + numeric value. Same slider behaviour as FR-051.
 - **FR-063** Rows appear and disappear live as applications start/stop using audio, without

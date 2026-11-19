@@ -10,6 +10,7 @@
 //! thread when a session starts or stops playing, or appears.
 
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use windows::core::Interface;
 use windows::Win32::Media::Audio::{
@@ -129,6 +130,77 @@ impl Drop for ActivityWatch {
     }
 }
 
+/// How long after a move of the current output applications arriving on the new output
+/// are taken as following the default. Windows moves the open streams of the applications
+/// within moments, a device just plugged in included; an application that only comes
+/// later does so by playing, and is heard there anyway.
+pub(crate) const FOLLOW_WINDOW: Duration = Duration::from_secs(30);
+
+/// A recent move of the current output.
+struct Move {
+    /// The outputs left, the last one included (several when the output moved again
+    /// before the applications arrived).
+    from: Vec<String>,
+    to: String,
+    at: Instant,
+}
+
+/// Where each application was last heard, and the last move of the current output.
+#[derive(Default)]
+pub(crate) struct Heard {
+    /// Process identifier to the output device it was last heard on.
+    at: HashMap<u32, String>,
+    moved: Option<Move>,
+}
+
+impl Heard {
+    /// The current output became `to` at `now`; `from` is the one it replaced, if known
+    /// (`None` after a restart of the audio service: nothing follows).
+    pub(crate) fn moved(&mut self, from: Option<&str>, to: &str, now: Instant) {
+        let Some(from) = from else {
+            self.moved = None;
+            return;
+        };
+        // Moved again before the applications arrived: the outputs left before still give
+        // theirs.
+        let mut left: Vec<String> = match self.moved.take() {
+            Some(previous) if previous.to == from && within(previous.at, now) => previous.from,
+            _ => Vec::new(),
+        };
+        left.push(from.to_owned());
+        left.retain(|device| device != to);
+        left.dedup();
+        self.moved = Some(Move { from: left, to: to.to_owned(), at: now });
+    }
+
+    /// Records a look at the sessions of `device` (see [`hear`]). Shortly after the
+    /// default moved to `device` ([`FOLLOW_WINDOW`]), an application last heard on the
+    /// output left that has a session here follows the default (see [`follow_default`]):
+    /// also when its session appears after the move, as on a device just plugged in, where
+    /// Windows moves the applications a moment after making it the default.
+    pub(crate) fn look(&mut self, device: &str, playing: &[u32], present: &[u32], now: Instant) {
+        if self.moved.as_ref().is_some_and(|m| !within(m.at, now)) {
+            self.moved = None;
+        }
+        if let Some(moved) = self.moved.as_ref().filter(|m| m.to == device) {
+            for from in &moved.from {
+                follow_default(&mut self.at, from, device, present);
+            }
+        }
+        hear(&mut self.at, device, playing, present);
+    }
+
+    /// The output `process` was last heard on.
+    pub(crate) fn get(&self, process: u32) -> Option<&str> {
+        self.at.get(&process).map(String::as_str)
+    }
+}
+
+/// Whether `now` is within [`FOLLOW_WINDOW`] of the move made at `at`.
+fn within(at: Instant, now: Instant) -> bool {
+    now.saturating_duration_since(at) <= FOLLOW_WINDOW
+}
+
 /// Most processes remembered with the output they were last heard on.
 const HEARD_LIMIT: usize = 512;
 
@@ -136,12 +208,7 @@ const HEARD_LIMIT: usize = 512;
 /// `playing` were heard there last; a process remembered on `device` that no longer has
 /// any session there (in `present`) has ended or left that output, and is forgotten, so
 /// a later process given the same identifier by Windows inherits nothing.
-pub(crate) fn hear(
-    heard: &mut HashMap<u32, String>,
-    device: &str,
-    playing: &[u32],
-    present: &[u32],
-) {
+fn hear(heard: &mut HashMap<u32, String>, device: &str, playing: &[u32], present: &[u32]) {
     heard.retain(|process, at| at != device || present.contains(process));
     if heard.len() >= HEARD_LIMIT {
         // Processes heard on other outputs accumulate slowly; starting over only forgets
@@ -159,12 +226,7 @@ pub(crate) fn hear(
 /// `from` that already has a session on `to` (in `present`) is taken as following the
 /// default, as most applications do a moment later, and keeps its row on the new output
 /// instead of disappearing until it is heard there.
-pub(crate) fn follow_default(
-    heard: &mut HashMap<u32, String>,
-    from: &str,
-    to: &str,
-    present: &[u32],
-) {
+fn follow_default(heard: &mut HashMap<u32, String>, from: &str, to: &str, present: &[u32]) {
     for (process, at) in heard.iter_mut() {
         if at == from && present.contains(process) {
             to.clone_into(at);
@@ -192,6 +254,94 @@ mod tests {
 
     fn at(heard: &HashMap<u32, String>, process: u32) -> Option<&str> {
         heard.get(&process).map(String::as_str)
+    }
+
+    /// `seconds` after `start`.
+    fn after(start: Instant, seconds: u64) -> Instant {
+        start + Duration::from_secs(seconds)
+    }
+
+    #[test]
+    fn applications_that_reach_a_just_plugged_output_late_follow_the_switch() {
+        let t = Instant::now();
+        let mut heard = Heard::default();
+        // A browser (10) and a paused player (20) were heard on the speakers; a chat
+        // program (40) on the TV.
+        heard.look("speakers", &[10, 20], &[10, 20], t);
+        heard.look("speakers", &[10], &[10, 20], t);
+        heard.look("tv", &[40], &[40], t);
+        // A new headset is plugged in and becomes the default: nothing has a session on
+        // it yet.
+        heard.moved(Some("speakers"), "headset", t);
+        heard.look("headset", &[], &[], t);
+        assert_eq!(heard.get(10), Some("speakers"));
+        // A moment later Windows moves the applications there, silent: they keep their
+        // rows on the new output. The chat program was not on the previous output.
+        heard.look("headset", &[], &[10, 20, 40], after(t, 2));
+        assert_eq!(heard.get(10), Some("headset"));
+        assert_eq!(heard.get(20), Some("headset"));
+        assert_eq!(heard.get(40), Some("tv"), "was not on the output just left");
+    }
+
+    #[test]
+    fn only_the_output_moved_to_takes_the_applications() {
+        let t = Instant::now();
+        let mut heard = Heard::default();
+        heard.look("speakers", &[10], &[10], t);
+        heard.moved(Some("speakers"), "headset", t);
+        // A look at another output (a stale look) takes nothing from the speakers.
+        heard.look("tv", &[], &[10], t);
+        assert_eq!(heard.get(10), Some("speakers"));
+        heard.look("headset", &[], &[10], t);
+        assert_eq!(heard.get(10), Some("headset"));
+    }
+
+    #[test]
+    fn long_after_the_switch_an_application_stays_where_it_was_heard() {
+        let t = Instant::now();
+        let mut heard = Heard::default();
+        // A player was heard on the speakers, then the headset became the default; the
+        // player stays on the speakers (set there in the Windows settings).
+        heard.look("speakers", &[20], &[20], t);
+        heard.moved(Some("speakers"), "headset", t);
+        heard.look("headset", &[], &[], t);
+        // Much later it opens a silent session on the headset: not heard there.
+        heard.look("headset", &[], &[20], after(t, FOLLOW_WINDOW.as_secs() + 1));
+        assert_eq!(heard.get(20), Some("speakers"));
+        // Heard playing there: now it is the headset's.
+        heard.look("headset", &[20], &[20], after(t, FOLLOW_WINDOW.as_secs() + 2));
+        assert_eq!(heard.get(20), Some("headset"));
+    }
+
+    #[test]
+    fn quick_switches_carry_the_applications_along() {
+        let t = Instant::now();
+        let mut heard = Heard::default();
+        heard.look("speakers", &[10], &[10], t);
+        // Speakers to a just-plugged headset (nothing there yet), then at once to the TV.
+        heard.moved(Some("speakers"), "headset", t);
+        heard.look("headset", &[], &[], t);
+        heard.moved(Some("headset"), "tv", after(t, 1));
+        heard.look("tv", &[], &[10], after(t, 2));
+        assert_eq!(heard.get(10), Some("tv"));
+        // And back to the speakers: the browser was never moved away from them on Windows'
+        // side either, it is found there again.
+        heard.moved(Some("tv"), "speakers", after(t, 3));
+        heard.look("speakers", &[], &[10], after(t, 3));
+        assert_eq!(heard.get(10), Some("speakers"));
+    }
+
+    #[test]
+    fn nothing_follows_when_the_output_left_is_unknown() {
+        let t = Instant::now();
+        let mut heard = Heard::default();
+        heard.look("speakers", &[10], &[10], t);
+        heard.moved(Some("speakers"), "headset", t);
+        // The first output known (start): nothing to follow, the earlier move is dropped.
+        heard.moved(None, "tv", t);
+        heard.look("headset", &[], &[10], t);
+        heard.look("tv", &[], &[10], t);
+        assert_eq!(heard.get(10), Some("speakers"));
     }
 
     #[test]
