@@ -12,6 +12,7 @@ use super::{
     classify_version, FlyoutHeight, General, HomeAssistant, Settings, SwitchScope, TrayIconSize,
     TrayIconStyle, VersionStatus, WindowPlacement,
 };
+use crate::apps::{AppKey, AppList, KnownApp};
 use crate::devices::KnownDevice;
 
 /// A settings file that was read.
@@ -136,6 +137,7 @@ pub fn write(settings: &Settings) -> String {
     line(&mut out, "apps_section_expanded", &Value::Bool(g.apps_section_expanded));
     line(&mut out, "first_run_done", &Value::Bool(g.first_run_done));
     line(&mut out, "volume_icon_question_done", &Value::Bool(g.volume_icon_question_done));
+    line(&mut out, "apps_custom_order", &Value::Bool(settings.apps.custom_order));
 
     let ha = &settings.home_assistant;
     out.push_str("\n[home_assistant]\n");
@@ -196,6 +198,20 @@ pub fn write(settings: &Settings) -> String {
                 line(&mut out, "icon", &Value::Text(icon.clone()));
             }
         }
+    }
+    for app in &settings.apps.entries {
+        out.push_str("\n[[applications]]\n");
+        match &app.app {
+            AppKey::System => line(&mut out, "system", &Value::Bool(true)),
+            AppKey::Executable(file) => {
+                line(&mut out, "executable", &Value::Text(file.clone()));
+                line(&mut out, "name", &Value::Text(app.name.clone()));
+                line(&mut out, "path", &Value::Text(app.path.clone()));
+            }
+            // Never remembered (AppList::learn).
+            AppKey::Process(_) => continue,
+        }
+        line(&mut out, "hidden", &Value::Bool(app.hidden));
     }
     out
 }
@@ -262,7 +278,9 @@ pub fn read(text: &str) -> Result<Loaded, ReadError> {
         let outcome = match &entry.section {
             Section::Root if entry.key == "version" => Ok(()),
             Section::Table(t) if t == "general" => general(&mut settings.general, entry),
-            Section::Table(t) if t == "interface" => interface(&mut settings.general, entry),
+            Section::Table(t) if t == "interface" => {
+                interface(&mut settings.general, &mut settings.apps, entry)
+            }
             Section::Table(t) if t == "home_assistant" => {
                 home_assistant(&mut settings.home_assistant, entry)
             }
@@ -274,7 +292,9 @@ pub fn read(text: &str) -> Result<Loaded, ReadError> {
                 }
                 applied
             }
-            Section::Element(a, _) if a == "outputs" || a == "inputs" => Ok(()),
+            Section::Element(a, _) if a == "outputs" || a == "inputs" || a == "applications" => {
+                Ok(())
+            }
             _ => Err("unknown key".to_owned()),
         };
         if let Err(problem) = outcome {
@@ -291,6 +311,9 @@ pub fn read(text: &str) -> Result<Loaded, ReadError> {
         [("outputs", &mut settings.devices.outputs), ("inputs", &mut settings.devices.inputs)]
     {
         *list = devices(&entries, name, &mut warnings);
+    }
+    if let Some(entries) = applications(&entries, &mut warnings) {
+        settings.apps.entries = entries;
     }
     settings.normalise();
     Ok(Loaded { settings, warnings })
@@ -338,11 +361,12 @@ fn general(g: &mut General, entry: &Entry) -> Result<(), String> {
     Ok(())
 }
 
-fn interface(g: &mut General, entry: &Entry) -> Result<(), String> {
+fn interface(g: &mut General, apps: &mut AppList, entry: &Entry) -> Result<(), String> {
     match entry.key.as_str() {
         "apps_section_expanded" => g.apps_section_expanded = boolean(&entry.value)?,
         "first_run_done" => g.first_run_done = boolean(&entry.value)?,
         "volume_icon_question_done" => g.volume_icon_question_done = boolean(&entry.value)?,
+        "apps_custom_order" => apps.custom_order = boolean(&entry.value)?,
         _ => return Err("unknown key".into()),
     }
     Ok(())
@@ -473,6 +497,62 @@ fn devices(entries: &[Entry], name: &str, warnings: &mut Vec<String>) -> Vec<Kno
             has_id.then_some(device)
         })
         .collect()
+}
+
+/// The remembered applications, in file order (`None`: the file has none, a file from
+/// before the Applications page). An element that is neither System sounds nor an
+/// executable is dropped; other wrong values keep their default.
+fn applications(entries: &[Entry], warnings: &mut Vec<String>) -> Option<Vec<KnownApp>> {
+    const NAME: &str = "applications";
+    // Per element: the entry, whether it is System sounds, its executable.
+    let mut list: Vec<(usize, KnownApp, bool, Option<String>)> = Vec::new();
+    for entry in entries {
+        let Section::Element(array, index) = &entry.section else { continue };
+        if array != NAME {
+            continue;
+        }
+        let position = match list.iter().position(|(i, ..)| i == index) {
+            Some(p) => p,
+            None => {
+                list.push((*index, KnownApp::system(), false, None));
+                list.len() - 1
+            }
+        };
+        let (_, app, system, executable) = &mut list[position];
+        let text = |v: &Value| match v {
+            Value::Text(t) => Ok(t.clone()),
+            other => Err(wrong(other, "text")),
+        };
+        let outcome = match entry.key.as_str() {
+            "system" => boolean(&entry.value).map(|b| *system = b),
+            "executable" => text(&entry.value).map(|t| *executable = Some(t)),
+            "name" => text(&entry.value).map(|t| app.name = t),
+            "path" => text(&entry.value).map(|t| app.path = t),
+            "hidden" => boolean(&entry.value).map(|b| app.hidden = b),
+            _ => Err("unknown key".into()),
+        };
+        if let Err(problem) = outcome {
+            warnings.push(format!("{NAME}[{index}].{}: {problem}", entry.key));
+        }
+    }
+    if list.is_empty() {
+        return None;
+    }
+    let kept = list
+        .into_iter()
+        .filter_map(|(index, mut app, system, executable)| {
+            app.app = match (system, executable) {
+                (true, _) => AppKey::System,
+                (false, Some(file)) if !file.trim().is_empty() => AppKey::Executable(file),
+                _ => {
+                    warnings.push(format!("{NAME}[{index}]: no executable; dropped"));
+                    return None;
+                }
+            };
+            Some(app)
+        })
+        .collect();
+    Some(kept)
 }
 
 /// Splits the document into entries.
@@ -639,6 +719,20 @@ mod tests {
             KnownDevice { windows_name: "Headset".into(), ..KnownDevice::new("{b}") },
         ];
         settings.devices.inputs = vec![KnownDevice::new("{mic}")];
+        // The user's order: System sounds first, a hidden application with an odd name.
+        settings.apps.custom_order = true;
+        settings.apps.entries = vec![
+            KnownApp { hidden: true, ..KnownApp::system() },
+            KnownApp {
+                hidden: true,
+                ..KnownApp::new(
+                    AppKey::executable("zoom.exe"),
+                    "Zoom \"Work\" é",
+                    Some(r"C:\Program Files\Zoom\Zoom.exe"),
+                )
+            },
+            KnownApp::new(AppKey::executable("a.exe"), "Audacity", None),
+        ];
         settings.home_assistant = HomeAssistant {
             enabled: true,
             host: "broker.example".into(),
@@ -658,6 +752,30 @@ mod tests {
             last_version: Some("2.0.0-rc.1".into()),
         };
         settings
+    }
+
+    #[test]
+    fn a_file_from_before_the_applications_page_has_system_sounds_only() {
+        let loaded = read("version = 1\n[general]\nwheel_step = 3\n").expect("readable");
+        assert_eq!(loaded.settings.apps, AppList::default());
+    }
+
+    #[test]
+    fn damaged_applications_are_dropped_or_repaired() {
+        let text = "version = 1\n\
+            [[applications]]\nname = \"No executable\"\n\
+            [[applications]]\nexecutable = \"Player.EXE\"\nhidden = 1\n\
+            [[applications]]\nexecutable = \"player.exe\"\nname = \"Again\"\n";
+        let loaded = read(text).expect("readable");
+        let apps = &loaded.settings.apps;
+        // The player once, visible (wrong value), then System sounds added at the end.
+        assert_eq!(apps.entries.len(), 2);
+        assert_eq!(apps.entries[0].app, AppKey::executable("player.exe"));
+        assert!(!apps.entries[0].hidden);
+        assert_eq!(apps.entries[1].app, AppKey::System);
+        let warnings = loaded.warnings.join("\n");
+        assert!(warnings.contains("applications[0]: no executable; dropped"), "{warnings}");
+        assert!(warnings.contains("applications[1].hidden: integer found"), "{warnings}");
     }
 
     #[test]
@@ -688,6 +806,11 @@ mod tests {
         assert!(text.contains("switch_scope = \"calls-only\"\n"));
         assert!(text.contains("language = \"fr\"\n"));
         assert!(text.contains("[[outputs]]\nid = \"{0.0.0.00000000}.{a}\"\n"));
+        assert!(text.contains(
+            "[[applications]]\nexecutable = \"zoom.exe\"\nname = \"Zoom \\\"Work\\\" é\"\n\
+             path = \"C:\\\\Program Files\\\\Zoom\\\\Zoom.exe\"\nhidden = true\n"
+        ));
+        assert!(text.contains("[[applications]]\nsystem = true\nhidden = true\n"));
         assert!(write(&Settings::default()).contains("language = \"auto\"\n"));
         assert!(!write(&Settings::default()).contains("[settings_window]"));
     }

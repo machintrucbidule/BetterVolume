@@ -122,15 +122,20 @@ Wording: **must** = required for v1.
 - **FR-061** Lists every application that plays on the current output, or whose sound was
   last heard on it, plus "System sounds". One row per application, named after
   its executable (same name on every device): multiple streams of the same application
-  are grouped and controlled together.
+  are grouped and controlled together. An application is recognised by the file name of
+  its executable (case ignored), not its folder: a program that moves to a new versioned
+  folder at each update stays the same application, and two programs with the same file
+  name are one.
 - **FR-062** Row = application icon (click toggles mute for that app) + friendly name +
   slider + numeric value. Same slider behaviour as FR-051.
 - **FR-063** Rows appear and disappear live as applications start/stop using audio, without
   moving the control currently under the pointer while it is being dragged.
 - **FR-064** Stable ordering: the order of the Applications page (FR-098). Until the user
-  orders them: alphabetical by friendly name, System sounds last; an application never seen
-  before is added at the end (just before System sounds while System sounds is last).
-  Applications excluded on that page are not listed (FR-097).
+  moves a row there, the list stays alphabetical by friendly name, System sounds last, and
+  an application never seen before takes its alphabetical place; from the first move the
+  order is the user's and a new application goes at the end (just before System sounds
+  while System sounds is last). Applications excluded on that page are not listed
+  (FR-097).
 - **FR-065** No application: the section shows only "System sounds" (when Windows has no
   System sounds session either, there is nothing to control: only the section header
   shows).
@@ -200,13 +205,19 @@ Wording: **must** = required for v1.
 
 ### 5.6 Applications (shown in the navigation between Devices and Home Assistant)
 - **FR-096** One list of every application that has played sound on this PC, remembered
-  (its display name and executable only), plus "System sounds". Each row: drag handle,
-  icon, name, show/hide. A remembered application can be forgotten, after a confirmation
-  (System sounds cannot).
+  (its display name and executable only), plus "System sounds". An application is
+  remembered as soon as it is heard playing on the current output, even while the flyout
+  is closed, and when the flyout or this page shows its session. Each row: drag handle,
+  icon, name over "executable file name · In use / Closed" (whether a program with that
+  file name runs now), show/hide. Any remembered application can be forgotten, after a
+  confirmation (System sounds cannot), also while it runs: it is then new again as soon
+  as it plays (hiding is the way to stop seeing one).
 - **FR-097** Hiding ("excluding") an application removes it from the flyout's application
   list only: its sound and volume are not touched. System sounds can be hidden too.
 - **FR-098** Reorder by drag-and-drop and by keyboard; the order applies to the flyout
-  (FR-064). Default order and new applications: FR-064.
+  (FR-064). Default order and new applications: FR-064. A "Sort alphabetically" button
+  above the list asks for a confirmation, then puts the list back in alphabetical order
+  and in the automatic mode of FR-064.
 - **FR-099** Remembered applications are kept in the settings file only; they are never
   published (Home Assistant has no per-application control) nor written to the log.
 

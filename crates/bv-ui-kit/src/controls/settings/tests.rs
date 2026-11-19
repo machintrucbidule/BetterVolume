@@ -399,13 +399,16 @@ fn row(key: u64, list: u32, name: &str, connected: bool) -> Block {
     Block::Device(DeviceRow {
         key: SettingKey(key),
         list,
-        icon: DeviceIcon::Headset,
-        chosen_icon: None,
-        automatic_icon: DeviceIcon::Headset,
+        picture: RowPicture::Device {
+            shown: DeviceIcon::Headset,
+            chosen: None,
+            automatic: DeviceIcon::Headset,
+        },
         name: name.into(),
         detail: "Windows name · connected".into(),
         hidden: false,
-        connected,
+        renamable: true,
+        forgettable: !connected,
     })
 }
 
@@ -432,7 +435,7 @@ fn part(v: &SettingsView, key: SettingKey, part: Part) -> Rect {
     let r = match part {
         Part::Body => laid.grip,
         Part::Icon => laid.icon,
-        Part::Rename => laid.rename,
+        Part::Rename => laid.rename.unwrap(),
         Part::Visibility => laid.visibility,
         Part::Forget => laid.forget.unwrap(),
         Part::TextBox => laid.text_box,
@@ -458,8 +461,100 @@ fn rows_have_their_buttons_and_disconnected_ones_can_be_forgotten() {
     assert!(speakers.forget.is_none());
     assert!(v.layout.row(C).unwrap().forget.is_some());
     assert!(speakers.rect.height >= t::ROW_MIN_HEIGHT);
-    assert!(speakers.name.right() <= speakers.rename.x, "the name never runs under the buttons");
+    assert!(
+        speakers.name.right() <= speakers.rename.unwrap().x,
+        "the name never runs under the buttons"
+    );
     assert!(speakers.icon.x > speakers.grip.right());
+}
+
+fn app_row(key: u64, name: &str, picture: RowPicture, forgettable: bool) -> Block {
+    Block::Device(DeviceRow {
+        key: SettingKey(key),
+        list: 0,
+        picture,
+        name: name.into(),
+        detail: "player.exe · In use".into(),
+        hidden: false,
+        renamable: false,
+        forgettable,
+    })
+}
+
+const PLAYER: SettingKey = SettingKey(30);
+const SYSTEM: SettingKey = SettingKey(31);
+
+fn applications() -> SettingsView {
+    let blocks = vec![
+        Block::Text("Applications that played sound.".into()),
+        app_row(30, "Player", RowPicture::App { pixels: None, source: None }, true),
+        app_row(31, "System sounds", RowPicture::SystemSounds, false),
+    ];
+    view(content(GENERAL, blocks))
+}
+
+#[test]
+fn application_rows_have_no_icon_button_nor_rename() {
+    let mut v = applications();
+    let player = v.layout.row(PLAYER).unwrap().clone();
+    assert!(player.rename.is_none());
+    assert!(player.forget.is_some(), "an application can be forgotten");
+    assert!(v.layout.row(SYSTEM).unwrap().forget.is_none(), "System sounds cannot");
+    assert!(player.name.right() <= player.forget.unwrap().x);
+    // The bin takes the place of the pencil: next to the eye.
+    let (button, _, gap) = t::ROW_BUTTON;
+    assert_eq!(player.forget.unwrap().x, player.visibility.x - gap - button);
+    // The picture is not a button.
+    let picture = center(v.layout.on_screen(player.icon));
+    assert_eq!(click(&mut v, picture).action, None);
+    assert!(v.picker.is_none());
+    // Tab goes from the navigation to the eye and the bin, then to the next row.
+    let stops = v.stops();
+    let rows: Vec<Target> = stops.into_iter().filter(|s| matches!(s, Target::Row(..))).collect();
+    assert_eq!(
+        rows,
+        [
+            Target::Row(PLAYER, Part::Visibility),
+            Target::Row(PLAYER, Part::Forget),
+            Target::Row(SYSTEM, Part::Visibility),
+        ]
+    );
+    // Moved with the keyboard like devices.
+    v.focus = Some(Target::Row(SYSTEM, Part::Visibility));
+    assert_eq!(
+        v.key(SettingsKey::AltUp, &Fixed).action,
+        Some(SettingsAction::MoveDevice(SYSTEM, 0))
+    );
+    // The bin asks first, then forgets.
+    click_part(&mut v, PLAYER, Part::Forget);
+    assert_eq!(v.confirm, Some(PLAYER));
+    assert_eq!(v.focus, Some(Target::ConfirmCancel));
+    assert_eq!(
+        v.key(SettingsKey::Tab { back: false }, &Fixed).action,
+        None,
+        "Tab moves to the confirm button"
+    );
+    assert_eq!(v.key(SettingsKey::Enter, &Fixed).action, Some(SettingsAction::Forget(PLAYER)));
+}
+
+#[test]
+fn application_rows_expose_only_their_buttons() {
+    let v = applications();
+    let tree = v.access_tree(&Fixed);
+    let mut groups = Vec::new();
+    fn collect<'a>(node: &'a AccessNode, out: &mut Vec<&'a AccessNode>) {
+        if node.role == AccessRole::Group && node.name == "Player" {
+            out.push(node);
+        }
+        for child in &node.children {
+            collect(child, out);
+        }
+    }
+    collect(&tree, &mut groups);
+    let player = groups.first().expect("the row is a group");
+    let names: Vec<&str> = player.children.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["Hide", "Forget"]);
+    assert!(player.children.iter().all(|c| c.role == AccessRole::Button));
 }
 
 #[test]

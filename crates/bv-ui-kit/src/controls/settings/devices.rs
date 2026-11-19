@@ -233,9 +233,10 @@ impl SettingsView {
         let key = row.key;
         let on = |r: Rect| self.layout.on_screen(r).contains(p);
         let editing = self.edit.as_ref().is_some_and(|e| e.key == key);
-        Some(if on(row.icon) {
+        let icon_button = self.content.row(key).is_some_and(DeviceRow::has_icon_button);
+        Some(if icon_button && on(row.icon) {
             Target::Row(key, Part::Icon)
-        } else if on(row.rename) {
+        } else if row.rename.is_some_and(on) {
             Target::Row(key, Part::Rename)
         } else if on(row.visibility) {
             Target::Row(key, Part::Visibility)
@@ -257,13 +258,15 @@ impl SettingsView {
     ) -> Option<SettingsAction> {
         let row = self.content.row(key)?.clone();
         match part {
+            Part::Icon if !row.has_icon_button() => None,
+            Part::Rename if !row.renamable => None,
             Part::Icon => {
                 if self.picker.is_some_and(|p| p.key == key) {
                     self.picker = None;
                     self.focus = Some(Target::Row(key, Part::Icon));
                 } else {
                     let highlight = row
-                        .chosen_icon
+                        .chosen_icon()
                         .and_then(|icon| DeviceIcon::ALL.iter().position(|i| *i == icon))
                         .map_or(0, |i| i + 1);
                     self.picker = Some(Picker { key, highlight });
@@ -292,7 +295,7 @@ impl SettingsView {
             }
             Part::Visibility => Some(SettingsAction::SetHidden(key, !row.hidden)),
             Part::Forget => {
-                if row.connected {
+                if !row.forgettable {
                     return None;
                 }
                 self.confirm = Some(key);
@@ -312,7 +315,7 @@ impl SettingsView {
         let picker = self.picker.take()?;
         let row = self.content.row(picker.key)?;
         let icon = index.checked_sub(1).and_then(|i| DeviceIcon::ALL.get(i).copied());
-        let changed = icon != row.chosen_icon;
+        let changed = icon != row.chosen_icon();
         self.focus = Some(Target::Row(picker.key, Part::Icon));
         self.refresh(measure);
         changed.then_some(SettingsAction::SetIcon(picker.key, icon))
@@ -612,10 +615,12 @@ impl SettingsView {
             node.help = Some(row.name.clone());
             node
         };
-        let mut icon = button(1, &texts.change_icon, laid.icon);
-        icon.role = AccessRole::Expander;
-        icon.expanded = Some(self.picker.is_some_and(|p| p.key == row.key));
-        group.children.push(icon);
+        if row.has_icon_button() {
+            let mut icon = button(1, &texts.change_icon, laid.icon);
+            icon.role = AccessRole::Expander;
+            icon.expanded = Some(self.picker.is_some_and(|p| p.key == row.key));
+            group.children.push(icon);
+        }
         if let Some(edit) = self.edit_of(row.key) {
             let mut text = AccessNode::new(
                 id(5),
@@ -630,7 +635,9 @@ impl SettingsView {
             }
             group.children.push(text);
         }
-        group.children.push(button(2, &texts.rename, laid.rename));
+        if let Some(rename) = laid.rename {
+            group.children.push(button(2, &texts.rename, rename));
+        }
         let visibility = if row.hidden { &texts.show } else { &texts.hide };
         group.children.push(button(3, visibility, laid.visibility));
         if let Some(forget) = laid.forget {
@@ -657,7 +664,7 @@ impl SettingsView {
                     screen(*cell),
                 );
                 let chosen = row
-                    .chosen_icon
+                    .chosen_icon()
                     .and_then(|c| DeviceIcon::ALL.iter().position(|i| *i == c))
                     .map_or(0, |p| p + 1);
                 item.selected = Some(i == chosen);

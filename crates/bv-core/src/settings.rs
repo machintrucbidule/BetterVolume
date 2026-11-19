@@ -2,7 +2,8 @@
 //!
 //! This is the in-memory, versioned shape of the user's settings with the defaults required
 //! by the functional specification (section 5.1), the device lists (section 5.2: order,
-//! custom names, visibility, icon overrides) and remembered interface state. [`file`]
+//! custom names, visibility, icon overrides), the remembered applications (section 5.6:
+//! order, visibility) and remembered interface state. [`file`]
 //! turns them into the text of the settings file and back (no I/O here: the executable
 //! reads and writes the file, FR-125/FR-126), and the Home Assistant link (section 5.3).
 //! A key added after version 1 (the bubble, the flyout height, Home Assistant) is simply
@@ -15,6 +16,7 @@
 
 pub mod file;
 
+use crate::apps::AppList;
 use crate::audio::Flow;
 use crate::devices::KnownDevice;
 
@@ -296,6 +298,8 @@ pub struct Settings {
     pub general: General,
     /// Section 5.2.
     pub devices: DeviceLists,
+    /// Section 5.6: every application remembered, in the user's order.
+    pub apps: AppList,
     /// Section 5.3.
     pub home_assistant: HomeAssistant,
     /// Last place of the settings window; `None` = centred, default size.
@@ -310,6 +314,7 @@ impl Default for Settings {
             version: SCHEMA_VERSION,
             general: General::default(),
             devices: DeviceLists::default(),
+            apps: AppList::default(),
             home_assistant: HomeAssistant::default(),
             settings_window: None,
             updates: Updates::default(),
@@ -398,6 +403,7 @@ impl Settings {
                 }
             }
         }
+        self.apps.normalise();
         *self != before
     }
 }

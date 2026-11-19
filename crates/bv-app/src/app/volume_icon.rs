@@ -84,7 +84,7 @@ impl<E: AudioEngine> App<E> {
             self.dirty = true;
         }
         self.volume_icon = VolumeIconSession { incident: true, ..Default::default() };
-        self.settings_window.page = Page::General;
+        self.show_page(Page::General);
     }
 
     /// The settings window closed: the notice and the question go with it.

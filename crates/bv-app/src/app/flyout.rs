@@ -130,14 +130,20 @@ impl<E: AudioEngine> App<E> {
         self.flyout.open
     }
 
-    /// Sessions are watched only while the flyout shows the application list.
-    fn update_session_watch(&mut self) {
-        let wanted = self.flyout.open
+    /// Sessions are watched only while the flyout shows the application list, or the
+    /// settings window the Applications page (its rows learn and show what runs).
+    pub(super) fn update_session_watch(&mut self) {
+        let flyout = self.flyout.open
             && self.flyout.tab == FlyoutTab::Output
             && self.settings.general.apps_section_expanded;
+        let wanted = flyout || self.applications_page_shown();
         if wanted != self.flyout.watching {
             self.engine.watch_sessions(wanted);
             self.flyout.watching = wanted;
+            // The sessions just read: what plays there is remembered at once (FR-096).
+            if wanted {
+                self.learn_apps();
+            }
         }
     }
 
@@ -250,7 +256,10 @@ impl<E: AudioEngine> App<E> {
     fn apps_section(&self) -> AppsSection {
         let expanded = self.settings.general.apps_section_expanded;
         let rows = if expanded {
-            apps::rows(self.engine.sessions())
+            // The order and exclusions of the Applications page (FR-064, FR-097).
+            self.settings
+                .apps
+                .arrange(apps::rows(self.engine.sessions()))
                 .into_iter()
                 .map(|row| {
                     let system = row.is_system();
@@ -374,6 +383,7 @@ mod tests {
             process: 1,
             name: name.into(),
             icon: Some(r"C:\a.exe".into()),
+            path: Some(r"C:\a.exe".into()),
             volume,
             muted,
             heard_here: true,
@@ -414,9 +424,9 @@ mod tests {
         assert_eq!(tile(&content, "Speakers").icon, DeviceIcon::DesktopSpeakers);
         let rows = &content.apps.as_ref().unwrap().rows;
         assert_eq!(rows.len(), 2);
-        assert_eq!(rows[0].label, "System sounds", "System sounds first (FR-064)");
-        assert_eq!(rows[1].label, "Player");
-        assert_eq!(rows[1].icon_source.as_deref(), Some(r"C:\a.exe"));
+        assert_eq!(rows[0].label, "Player");
+        assert_eq!(rows[0].icon_source.as_deref(), Some(r"C:\a.exe"));
+        assert_eq!(rows[1].label, "System sounds", "System sounds last by default (FR-064)");
         assert_eq!(content.main.label, "Speakers");
         assert_eq!(content.main.volume, 40);
         assert_eq!(content.main.slider_name, "Volume: Speakers");
@@ -476,10 +486,10 @@ mod tests {
         assert_eq!(app.engine.endpoint(Flow::Output).unwrap().percent(), 70);
         app.flyout_action(FlyoutAction::ToggleMute(SliderTarget::Main));
         assert!(app.engine.endpoint(Flow::Output).unwrap().muted);
-        let player = app.flyout_content().apps.unwrap().rows[1].target;
+        let player = app.flyout_content().apps.unwrap().rows[0].target;
         app.flyout_action(FlyoutAction::SetVolume(player, 20));
         app.flyout_action(FlyoutAction::ToggleMute(player));
-        let row = &app.flyout_content().apps.unwrap().rows[1];
+        let row = &app.flyout_content().apps.unwrap().rows[0];
         assert_eq!((row.volume, row.muted), (20, true));
         assert_eq!(row.mute_tooltip, "Unmute");
     }

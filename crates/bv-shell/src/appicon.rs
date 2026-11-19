@@ -11,23 +11,34 @@ use windows::Win32::System::Environment::ExpandEnvironmentStringsW;
 use windows::Win32::UI::Shell::SHDefExtractIconW;
 use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, HICON};
 
-/// Most icons kept (a few dozen applications at most use audio on a machine).
+/// Most icons kept by default (a few dozen applications at most play at once).
 const CACHE_LIMIT: usize = 64;
 
 /// Icons already loaded, by source and size (`None`: the source has no usable icon).
-#[derive(Default)]
 pub(crate) struct IconCache {
     icons: HashMap<(String, u32), Option<Rc<Pixels>>>,
+    limit: usize,
+}
+
+impl Default for IconCache {
+    fn default() -> Self {
+        Self::with_limit(CACHE_LIMIT)
+    }
 }
 
 impl IconCache {
+    /// A cache keeping at most `limit` icons (it starts over beyond).
+    pub fn with_limit(limit: usize) -> Self {
+        Self { icons: HashMap::new(), limit: limit.max(1) }
+    }
+
     /// The icon of `source` at `pixels` × `pixels`, loaded on first request.
     pub fn get(&mut self, source: &str, pixels: u32, graphics: &Graphics) -> Option<Rc<Pixels>> {
         let key = (source.to_owned(), pixels);
         if let Some(icon) = self.icons.get(&key) {
             return icon.clone();
         }
-        if self.icons.len() >= CACHE_LIMIT {
+        if self.icons.len() >= self.limit {
             self.icons.clear();
         }
         let icon = load(source, pixels, graphics).map(Rc::new);

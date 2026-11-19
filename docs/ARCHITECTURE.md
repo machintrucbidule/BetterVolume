@@ -126,14 +126,14 @@ tools/          check.ps1 (all quality gates), measure.ps1 + budget.json (smoke 
 
 What each crate holds: `bv-core` (translations, settings schema with device lists and its
 TOML file format, audio vocabulary, device list model with natural-order learning and
-numbered duplicate names and the list edits of the Devices page, volume maths, application rows, text helpers, Home Assistant entities, topics and payloads, Base64 / hex / SHA-256), `bv-audio` (the Core Audio engine), `bv-ui-kit` (theme resolution,
+numbered duplicate names and the list edits of the Devices page, volume maths, application rows and the remembered application list, text helpers, Home Assistant entities, topics and payloads, Base64 / hex / SHA-256), `bv-audio` (the Core Audio engine), `bv-ui-kit` (theme resolution,
 tokens, motion, icons, vector paths, device icon catalogue, accessibility tree, tray icon,
 menu, flyout view, tooltip, bubble and settings window controls with text fields, buttons,
 notices and the close question, rendering backend in
 `src/backend`), `bv-shell`
 (message window and loop, tray icon drawn by the design system, wheel capture, custom
 context menu, flyout host, tooltip and bubble popups with their placement and motion, application
-icon loading, UI Automation provider, Windows appearance preferences, single instance, OS
+icon loading, the list of running programs, UI Automation provider, Windows appearance preferences, single instance, OS
 languages, waker, resume and suspend events, log file, Windows sound screens, settings window
 host, secrets protected for the Windows user (DPAPI), media keys,
 autostart entry, hiding the Windows volume icon through the taskbar helper and its loader
@@ -207,17 +207,29 @@ expanded).
 - Roles: "media" = console + multimedia, "calls" = communications; the current
   device of a flow is its console default. Default switching goes through the
   undocumented policy config interface, isolated in `policy.rs`.
-- Application sessions are watched only while `watch_sessions(true)` (the flyout),
-  so they cost nothing at idle. Each followed session also waits on its process through
-  the thread pool (`exit.rs`), so the row of an application that ends (even killed)
-  disappears although Windows may keep its session. An application is identified by its executable path; for
-  processes that cannot be opened, the path is read from the session identifier (and
-  their name from that executable, through the `\\?\GLOBALROOT` prefix).
+- Application sessions are watched only while `watch_sessions(true)` (the flyout, or the
+  Applications page of the settings window), so they cost nothing at idle. Each followed
+  session also waits on its process through the thread pool (`exit.rs`), so the row of an
+  application that ends (even killed) disappears although Windows may keep its session.
+  An application is identified by the file name of its executable (`AppKey`, FR-061);
+  for processes that cannot be opened, the path is read from the session identifier, and
+  their name and icon from that executable, through the `\\?\GLOBALROOT` prefix.
 - Activity watch (`activity.rs`): at all times, only the playing
   state of the sessions of the current output is followed (session created, state
-  changed; no process opened). The engine remembers, per process, the output where it was
+  changed). The engine remembers, per process, the output where it was
   last heard playing; published streams carry `heard_here`, and the application list
-  leaves out sessions not heard on the current output (`bv_core::apps::rows`).
+  leaves out sessions not heard on the current output (`bv_core::apps::rows`). A process
+  heard playing for the first time is identified once (executable path and name; one
+  that cannot be opened is left to the session list) and handed out by
+  `take_heard_apps`, so the Applications page remembers it even while the flyout is
+  closed (FR-096).
+- Remembered applications (`bv_core::apps::AppList`, settings `[[applications]]` and
+  `apps_custom_order`): learnt by `App::learn_apps` after every audio event and when the
+  sessions start being watched; `AppList::arrange` gives the flyout its order and
+  exclusions. The Applications page (`bv-app/src/app/apps_page.rs`) reads which programs
+  run (`bv_shell::running_executables`, a process snapshot taken when the page is built,
+  never watched); the settings host loads the row icons into a cache that lives with the
+  window.
 - Robustness (NFR-05): every Windows failure is a value (`AudioError`), never a panic; a
   "device gone" failure schedules a re-read; the audio service is watched through
   `SubscribeServiceChangeNotifications` (thread pool, no polling) and the engine rebuilds

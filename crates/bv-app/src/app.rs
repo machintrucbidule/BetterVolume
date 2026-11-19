@@ -23,6 +23,7 @@ use bv_shell::TOOLTIP_MAX_UNITS;
 /// so that a long device name is shortened rather than the volume cut off.
 const TOOLTIP_VOLUME_RESERVE: usize = 24;
 
+mod apps_page;
 mod bubble;
 mod flyout;
 pub mod ha;
@@ -31,6 +32,7 @@ mod settings_window;
 mod update;
 mod volume_icon;
 
+pub use apps_page::ProcessList;
 pub use flyout::FlyoutEffect;
 pub use settings_window::SettingsEffect;
 pub use update::{Download, UpdateEffect, UpdatePlatform};
@@ -73,6 +75,7 @@ impl<E: AudioEngine> App<E> {
             dirty: false,
         };
         app.learn_devices();
+        app.learn_apps();
         // The devices current at start are not announced.
         app.defaults = bubble::read_defaults(&app.engine);
         app
@@ -124,10 +127,12 @@ impl<E: AudioEngine> App<E> {
 
     /// The engine has news (its notify function fired): apply it.
     pub fn on_audio_signals(&mut self) -> Changes {
-        let changes = self.engine.process_signals();
+        let mut changes = self.engine.process_signals();
         if changes.devices {
             self.learn_devices();
         }
+        // A newly remembered application shows on the Applications page.
+        changes.sessions |= self.learn_apps();
         changes
     }
 
@@ -135,6 +140,7 @@ impl<E: AudioEngine> App<E> {
     pub fn on_resumed(&mut self) -> Changes {
         let changes = self.engine.refresh();
         self.learn_devices();
+        self.learn_apps();
         changes
     }
 

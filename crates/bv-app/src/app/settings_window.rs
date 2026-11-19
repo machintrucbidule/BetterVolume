@@ -18,7 +18,7 @@ use bv_core::settings::{
 };
 use bv_ui_kit::controls::device_icon::DeviceIcon;
 use bv_ui_kit::controls::settings::{
-    Block, Card, CardControl, DeviceRow, DeviceTexts, NavEntry, PageKey, SettingKey,
+    Block, Card, CardControl, DeviceRow, DeviceTexts, NavEntry, PageKey, RowPicture, SettingKey,
     SettingsAction, SettingsContent,
 };
 use bv_ui_kit::icons::Icon;
@@ -35,6 +35,8 @@ pub enum Page {
     General,
     /// Device lists (section 5.2).
     Devices,
+    /// Remembered applications (section 5.6).
+    Applications,
     /// Home Assistant (section 5.3).
     HomeAssistant,
     /// About (section 5.4).
@@ -42,7 +44,8 @@ pub enum Page {
 }
 
 impl Page {
-    const ALL: [Page; 4] = [Page::General, Page::Devices, Page::HomeAssistant, Page::About];
+    const ALL: [Page; 5] =
+        [Page::General, Page::Devices, Page::Applications, Page::HomeAssistant, Page::About];
 
     pub(super) fn key(self) -> PageKey {
         PageKey(self as u64)
@@ -153,6 +156,12 @@ pub(super) struct SettingsSession {
     pub(super) ha: HaPage,
     /// The project page, for a copy built from the public repository (FR-095).
     pub(super) project_page: Option<String>,
+    /// The window is open.
+    pub(super) open: bool,
+    /// The confirmation of "Sort alphabetically" is asked (Applications page).
+    pub(super) sorting: bool,
+    /// How the Applications page learns which programs run.
+    pub(super) processes: Option<super::ProcessList>,
 }
 
 impl<E: AudioEngine> App<E> {
@@ -170,7 +179,15 @@ impl<E: AudioEngine> App<E> {
     /// The settings window shows the General page (it is opened or brought forward for
     /// something there).
     pub fn settings_show_general(&mut self) {
-        self.settings_window.page = Page::General;
+        self.show_page(Page::General);
+    }
+
+    /// Shows `page`: a pending sort question goes, and the sessions are watched only
+    /// while the Applications page shows.
+    pub(super) fn show_page(&mut self, page: Page) {
+        self.settings_window.page = page;
+        self.settings_window.sorting = false;
+        self.update_session_watch();
     }
 
     /// The settings window is being opened: it starts on the General page, showing the
@@ -180,6 +197,20 @@ impl<E: AudioEngine> App<E> {
         window.page = Page::General;
         window.autostart = autostart;
         window.ha = Default::default();
+        window.open = true;
+        window.sorting = false;
+    }
+
+    /// The settings window closed.
+    pub fn settings_closed(&mut self) {
+        self.settings_window.open = false;
+        self.settings_window.sorting = false;
+        self.update_session_watch();
+    }
+
+    /// Whether the settings window shows the Applications page.
+    pub(super) fn applications_page_shown(&self) -> bool {
+        self.settings_window.open && self.settings_window.page == Page::Applications
     }
 
     /// The autostart entry as Windows now has it. Returns whether it changed.
@@ -195,6 +226,7 @@ impl<E: AudioEngine> App<E> {
         let nav = [
             (Page::General, Icon::Settings, Msg::SettingsPageGeneral),
             (Page::Devices, Icon::Devices, Msg::SettingsPageDevices),
+            (Page::Applications, Icon::App, Msg::SettingsPageApps),
             (Page::HomeAssistant, Icon::Home, Msg::SettingsPageHa),
             (Page::About, Icon::Info, Msg::SettingsPageAbout),
         ]
@@ -204,6 +236,7 @@ impl<E: AudioEngine> App<E> {
         let (title, blocks) = match page {
             Page::General => (text(Msg::SettingsPageGeneral), self.general_cards()),
             Page::Devices => (text(Msg::SettingsPageDevices), self.device_blocks()),
+            Page::Applications => (text(Msg::SettingsPageApps), self.app_blocks()),
             Page::HomeAssistant => (text(Msg::SettingsPageHa), self.ha_blocks()),
             Page::About => (text(Msg::SettingsPageAbout), self.about_cards()),
         };
@@ -216,7 +249,7 @@ impl<E: AudioEngine> App<E> {
             blocks,
             devices: self.device_texts(),
             close_question: self.close_question(),
-            question: self.volume_icon_question(),
+            question: self.volume_icon_question().or_else(|| self.apps_question()),
             reveal: self
                 .volume_icon_notice(Setting::HideIconNotice.key())
                 .map(|_| Setting::HideIconNotice.key()),
@@ -225,6 +258,8 @@ impl<E: AudioEngine> App<E> {
 
     fn device_texts(&self) -> DeviceTexts {
         let text = |msg| self.language.text(msg).to_owned();
+        // The rows of the Applications page are applications.
+        let apps_page = self.settings_window.page == Page::Applications;
         DeviceTexts {
             change_icon: text(Msg::SettingsChangeIcon),
             rename: text(Msg::SettingsRename),
@@ -236,8 +271,16 @@ impl<E: AudioEngine> App<E> {
             duplicate: text(Msg::SettingsDuplicate),
             automatic: text(Msg::SettingsIconAuto),
             icon_names: DeviceIcon::ALL.iter().map(|icon| text(icon_name(*icon))).collect(),
-            forget_question: text(Msg::SettingsForgetQuestion),
-            forget_detail: text(Msg::SettingsForgetDetail),
+            forget_question: text(if apps_page {
+                Msg::SettingsAppForgetQuestion
+            } else {
+                Msg::SettingsForgetQuestion
+            }),
+            forget_detail: text(if apps_page {
+                Msg::SettingsAppForgetDetail
+            } else {
+                Msg::SettingsForgetDetail
+            }),
             forget_confirm: text(Msg::SettingsForgetConfirm),
             cancel: text(Msg::SettingsCancel),
         }
@@ -287,16 +330,19 @@ impl<E: AudioEngine> App<E> {
                 blocks.push(Block::Device(DeviceRow {
                     key: key.0,
                     list: flow.index() as u32,
-                    icon: chosen.unwrap_or(automatic),
-                    chosen_icon: chosen,
-                    automatic_icon: automatic,
+                    picture: RowPicture::Device {
+                        shown: chosen.unwrap_or(automatic),
+                        chosen,
+                        automatic,
+                    },
                     name,
                     detail: self.language.format(
                         Msg::SettingsDeviceDetail,
                         &[("name", windows_name), ("state", &state)],
                     ),
                     hidden: entry.hidden,
-                    connected,
+                    renamable: true,
+                    forgettable: !connected,
                 }));
             }
         }
@@ -517,10 +563,13 @@ impl<E: AudioEngine> App<E> {
 
     /// Applies what the user asked for in the settings window.
     pub fn settings_action(&mut self, action: SettingsAction) -> SettingsEffect {
+        if self.app_action(&action) {
+            return SettingsEffect::Refresh;
+        }
         match action {
             SettingsAction::SelectPage(key) => {
                 if let Some(page) = Page::from_key(key) {
-                    self.settings_window.page = page;
+                    self.show_page(page);
                 }
             }
             SettingsAction::Toggle(key, on) if HaKey::from_key(key).is_some() => {
@@ -547,6 +596,10 @@ impl<E: AudioEngine> App<E> {
                 Some(Setting::HideIcon) => return self.set_volume_icon_hidden(on),
                 _ => {}
             },
+            // The question shown is the Windows volume icon one when both are pending.
+            SettingsAction::QuestionAnswer(yes) if self.volume_icon_question().is_none() => {
+                self.apps_answer(yes);
+            }
             SettingsAction::QuestionAnswer(hide) => return self.volume_icon_answer(hide),
             SettingsAction::Choose(key, index) => match Setting::from_key(key) {
                 Some(Setting::Language) => {
@@ -651,7 +704,7 @@ impl<E: AudioEngine> App<E> {
                     return SettingsEffect::Close;
                 }
                 // Refused: show the page with its message, wherever the user was.
-                self.settings_window.page = Page::HomeAssistant;
+                self.show_page(Page::HomeAssistant);
             }
             SettingsAction::CloseAnswer(false) => {
                 self.ha_discard();
@@ -753,7 +806,7 @@ mod tests {
         app.settings_opening(true);
         let content = app.settings_content();
         assert_eq!(content.page, Page::General.key());
-        assert_eq!(content.nav.len(), 4, "General, Devices, Home Assistant, About");
+        assert_eq!(content.nav.len(), 5, "General, Devices, Applications, Home Assistant, About");
         assert!(matches!(
             card(&content, Setting::Autostart).control,
             CardControl::Toggle { on: true, .. }
@@ -941,6 +994,14 @@ mod tests {
         app.settings_content().rows().cloned().collect()
     }
 
+    /// The device drawing a row shows.
+    fn shown(row: &DeviceRow) -> DeviceIcon {
+        match row.picture {
+            RowPicture::Device { shown, .. } => shown,
+            _ => panic!("not a device row"),
+        }
+    }
+
     fn row(app: &App<FakeEngine>, name: &str) -> DeviceRow {
         rows(app).into_iter().find(|r| r.name == name).expect("row shown")
     }
@@ -949,14 +1010,14 @@ mod tests {
     fn the_devices_page_lists_both_flows_in_order() {
         let mut app = devices_app();
         let content = app.settings_content();
-        assert_eq!(content.nav.len(), 4);
+        assert_eq!(content.nav.len(), 5);
         let names: Vec<String> = rows(&app).into_iter().map(|r| r.name).collect();
         // Learnt in natural order at start: Headset, Speakers; then the microphone.
         assert_eq!(names, ["Headset", "Speakers", "Microphone"]);
         let speakers = row(&app, "Speakers");
         assert_eq!(speakers.detail, "Speakers · connected");
-        assert_eq!(speakers.icon, DeviceIcon::DesktopSpeakers);
-        assert!(speakers.connected && !speakers.hidden);
+        assert_eq!(shown(&speakers), DeviceIcon::DesktopSpeakers);
+        assert!(!speakers.forgettable && speakers.renamable && !speakers.hidden);
         assert_ne!(speakers.list, row(&app, "Microphone").list);
         // Without microphone management the inputs list goes away (FR-076).
         app.settings.general.microphone_enabled = false;
@@ -987,13 +1048,16 @@ mod tests {
         app.settings_action(SettingsAction::SetIcon(speakers, Some(DeviceIcon::Soundbar)));
         let desk = row(&app, "Desk");
         assert_eq!(
-            (desk.icon, desk.chosen_icon),
-            (DeviceIcon::Soundbar, Some(DeviceIcon::Soundbar))
+            desk.picture,
+            RowPicture::Device {
+                shown: DeviceIcon::Soundbar,
+                chosen: Some(DeviceIcon::Soundbar),
+                automatic: DeviceIcon::DesktopSpeakers,
+            }
         );
-        assert_eq!(desk.automatic_icon, DeviceIcon::DesktopSpeakers);
         assert_eq!(app.settings().devices.outputs[0].icon.as_deref(), Some("soundbar"));
         app.settings_action(SettingsAction::SetIcon(speakers, None));
-        assert_eq!(row(&app, "Desk").icon, DeviceIcon::DesktopSpeakers);
+        assert_eq!(shown(&row(&app, "Desk")), DeviceIcon::DesktopSpeakers);
         assert!(app.take_dirty());
     }
 
@@ -1023,9 +1087,9 @@ mod tests {
         assert_eq!(rows(&app).len(), 3, "a connected device stays");
         app.engine.devices[Flow::Output.index()].retain(|d| d.id != "hs");
         let gone = row(&app, "Headset");
-        assert!(!gone.connected);
+        assert!(gone.forgettable);
         assert_eq!(gone.detail, "Headset · disconnected");
-        assert_eq!(gone.icon, DeviceIcon::GenericOutput, "no type known while away");
+        assert_eq!(shown(&gone), DeviceIcon::GenericOutput, "no type known while away");
         app.settings_action(SettingsAction::Forget(gone.key));
         assert!(rows(&app).iter().all(|r| r.name != "Headset"));
         assert!(app.take_dirty());

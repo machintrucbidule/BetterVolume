@@ -11,7 +11,7 @@ use bv_ui_kit::access::AccessAction;
 use bv_ui_kit::backend::{Graphics, WindowSurface};
 use bv_ui_kit::controls::flyout::{GraphicsMeasure, TextMeasure};
 use bv_ui_kit::controls::settings::{
-    Response, SettingsAction, SettingsContent, SettingsKey, SettingsView,
+    Block, Response, RowPicture, SettingsAction, SettingsContent, SettingsKey, SettingsView,
 };
 use bv_ui_kit::controls::tray::{self, TrayIcon};
 use bv_ui_kit::icons::VolumeLevel;
@@ -48,6 +48,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WS_OVERLAPPEDWINDOW,
 };
 
+use crate::appicon::IconCache;
 use crate::host::{host_of, Event, Host, Shell};
 use crate::trayicon::{self, OwnedIcon};
 use crate::uia::{self, AccessSource};
@@ -87,6 +88,8 @@ pub(crate) struct Open {
     placed: bool,
     wheel_rest: i32,
     _icons: Vec<OwnedIcon>,
+    /// Application icons of the rows (FR-096), dropped with the window.
+    app_icons: IconCache,
 }
 
 /// State of the settings window, kept by the shell.
@@ -266,10 +269,12 @@ impl Shell {
         // SAFETY: our own window, just created on this thread.
         let scale = unsafe { GetDpiForWindow(window) }.max(96) as f32 / 96.0;
         let measure_graphics = self.graphics();
+        let mut app_icons = IconCache::with_limit(APP_ICONS_LIMIT);
         let view = match &measure_graphics {
             Some(graphics) => {
                 let measure = GraphicsMeasure { graphics, text_scale: theme.text_scale };
                 let (w, h) = t::DEFAULT_SIZE;
+                let content = resolve_icons(content, &mut app_icons, scale, graphics);
                 SettingsView::new(content, Size::new(w, h), &measure, theme.text_scale)
             }
             None => {
@@ -288,6 +293,7 @@ impl Shell {
             placed: false,
             wheel_rest: 0,
             _icons: icons,
+            app_icons,
         });
         self.apply_window_theme(window, &theme);
 
@@ -387,6 +393,7 @@ impl Shell {
             let Some(open) = state.open.as_mut() else { return };
             let text_scale = self.app_theme().text_scale;
             let measure = GraphicsMeasure { graphics: &graphics, text_scale };
+            let content = resolve_icons(content, &mut open.app_icons, open.scale, &graphics);
             // Unchanged content (an audio change elsewhere): nothing to lay out or announce.
             if *open.view.content() == content {
                 return;
@@ -513,6 +520,17 @@ impl Shell {
                         // The surface keeps its composition target and is resized at
                         // the new scale by the WM_SIZE below.
                         open.scale = dpi.max(96) as f32 / 96.0;
+                        // Application icons at the new size.
+                        if let Some(graphics) = self.graphics() {
+                            let text_scale = self.app_theme().text_scale;
+                            let measure = GraphicsMeasure { graphics: &graphics, text_scale };
+                            let content = open.view.content().clone();
+                            let content =
+                                resolve_icons(content, &mut open.app_icons, open.scale, &graphics);
+                            if *open.view.content() != content {
+                                open.view.set_content(content, &measure);
+                            }
+                        }
                         // Being placed on a monitor of another scaling: the remembered
                         // place (physical pixels) wins over Windows' suggestion.
                         if !open.placed {
@@ -1129,6 +1147,29 @@ impl AccessSource for SettingsAccess {
             state.open.as_ref().and_then(|o| o.view.focused_access_id())
         })
     }
+}
+
+/// Most application icons kept while the window is open (a long Applications page).
+const APP_ICONS_LIMIT: usize = 512;
+
+/// Loads the application icons of the rows at the size they are drawn (FR-096); rows
+/// keep a generic picture when an icon cannot be loaded.
+fn resolve_icons(
+    mut content: SettingsContent,
+    icons: &mut IconCache,
+    scale: f32,
+    graphics: &Graphics,
+) -> SettingsContent {
+    let (size, _) = t::ROW_APP_ICON;
+    let pixels = (size * scale).round().max(1.0) as u32;
+    for block in &mut content.blocks {
+        if let Block::Device(row) = block {
+            if let RowPicture::App { pixels: loaded, source: Some(source) } = &mut row.picture {
+                *loaded = icons.get(source, pixels, graphics);
+            }
+        }
+    }
+    content
 }
 
 #[cfg(test)]

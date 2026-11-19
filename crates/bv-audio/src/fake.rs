@@ -8,7 +8,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    AppKey, AudioEngine, AudioError, Changes, DeviceInfo, Endpoint, Flow, Role, Stream, SwitchScope,
+    AppKey, AudioEngine, AudioError, Changes, DeviceInfo, Endpoint, Flow, HeardApp, Role, Stream,
+    SwitchScope,
 };
 
 /// The fake engine. Every field is public so tests can arrange any situation.
@@ -25,6 +26,9 @@ pub struct FakeEngine {
     pub streams: Vec<Stream>,
     /// Whether sessions are watched.
     pub watching_sessions: bool,
+    /// Applications heard playing while the sessions were not watched, handed out by the
+    /// next `take_heard_apps`.
+    pub heard_apps: Vec<HeardApp>,
     /// When set, the next operation fails with this error (then it is cleared).
     pub fail_next: Option<AudioError>,
     /// Changes reported by the next `process_signals` (set by the test, as if Windows had
@@ -147,6 +151,10 @@ impl AudioEngine for FakeEngine {
         }
     }
 
+    fn take_heard_apps(&mut self) -> Vec<HeardApp> {
+        std::mem::take(&mut self.heard_apps)
+    }
+
     fn set_app_volume(&mut self, app: &AppKey, percent: u8) -> Result<(), AudioError> {
         self.check()?;
         let mut found = false;
@@ -234,6 +242,7 @@ mod tests {
             process: 0,
             name: String::new(),
             icon: None,
+            path: None,
             volume: 1.0,
             muted: true,
             heard_here: true,

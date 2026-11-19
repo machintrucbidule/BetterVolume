@@ -284,6 +284,7 @@ fn describe(control: &IAudioSessionControl2, volume: &ISimpleAudioVolume, names:
             process: pid,
             name: String::new(),
             icon,
+            path: None,
             volume: level,
             muted,
             heard_here: false,
@@ -311,18 +312,31 @@ fn describe(control: &IAudioSessionControl2, volume: &ISimpleAudioVolume, names:
     // executable too, reached through its kernel path.
     let readable = path.clone().or_else(|| kernel_path.as_deref().map(process::readable_path));
     let name = if let Some(readable) = &readable {
-        let mut names = names.borrow_mut();
-        if names.len() >= NAMES_LIMIT {
-            names.clear();
-        }
-        names
-            .entry(readable.to_lowercase())
-            .or_insert_with(|| process::friendly_name(readable))
-            .clone()
+        friendly_name_cached(names, readable)
     } else {
         process::resolve_indirect(&display).unwrap_or_default()
     };
-    // The kernel path form cannot be used to load an icon.
-    let icon = Some(icon).filter(|i| !i.trim().is_empty()).or(path);
-    Stream { app, process: pid, name, icon, volume: level, muted, heard_here: false }
+    // The executable gives the icon when the session names none; one we may not open is
+    // reached through the readable form of its kernel path (the bare kernel form cannot
+    // be loaded), as on the Applications page, so both show the same icon.
+    let icon = Some(icon).filter(|i| !i.trim().is_empty()).or_else(|| readable.clone());
+    Stream {
+        app,
+        process: pid,
+        name,
+        icon,
+        path: readable,
+        volume: level,
+        muted,
+        heard_here: false,
+    }
+}
+
+/// The friendly name of the executable at `path`, read once and then kept in `names`.
+pub(crate) fn friendly_name_cached(names: &Names, path: &str) -> String {
+    let mut names = names.borrow_mut();
+    if names.len() >= NAMES_LIMIT {
+        names.clear();
+    }
+    names.entry(path.to_lowercase()).or_insert_with(|| process::friendly_name(path)).clone()
 }

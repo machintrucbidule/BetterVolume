@@ -289,6 +289,12 @@ name", 0 to 100, small change 1, large change 10), footer buttons. Menu: menu, m
   icon expander, the text box (edit, with its value), rename, show/hide and forget
   buttons; the picker as a list; the confirmation as a group with two buttons.
 
+- Application rows (FR-096, `RowPicture::App` / `SystemSounds`): the same row, without
+  the icon button: the application's own icon 24 (dimmed to 60 % on a hidden row) or, for
+  System sounds and an application without an icon, a glyph 20, centred in the 40 x 40
+  place of the button; no pencil (no rename), the bin next to the eye on every row but
+  System sounds. The picture is not a stop. A button row above a list keeps 12 below it.
+
 ### 17.2 Forms, notices and the close question (FR-090 to FR-092)
 
 - Text field (card control, WinUI TextBox): 260 wide, the text box of 17.1; at rest it

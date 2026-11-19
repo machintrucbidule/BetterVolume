@@ -330,6 +330,7 @@ fn main() -> ExitCode {
         let engine = Engine::new(Arc::new(move || waker.wake()));
         let mut app = App::new(engine, settings, language);
         app.set_project_page(updater::project_page());
+        app.set_process_list(bv_shell::running_executables);
         app.set_os_languages(os_languages);
         // The Home Assistant link starts only if it is on (FR-118); its threads, like the
         // audio callbacks, only wake the UI thread.
@@ -450,10 +451,14 @@ fn main() -> ExitCode {
                     // Shown even when the volume is already at an end, like Windows.
                     show_volume(shell, &app);
                 }
-                Event::TrayPrimary(activation) => shell.toggle_flyout(activation, || {
-                    app.flyout_opening();
-                    app.flyout_content()
-                }),
+                Event::TrayPrimary(activation) => {
+                    shell.toggle_flyout(activation, || {
+                        app.flyout_opening();
+                        app.flyout_content()
+                    });
+                    // Applications seen by the opening flyout join the Applications page.
+                    refresh_settings(shell, &app);
+                }
                 // The installer or the uninstaller needs the files.
                 Event::ExitRequested => quit(shell, &mut app, &mut store),
                 Event::ActivateRequested => {
@@ -461,6 +466,7 @@ fn main() -> ExitCode {
                         app.flyout_opening();
                     }
                     shell.show_flyout(app.flyout_content());
+                    refresh_settings(shell, &app);
                 }
                 Event::Flyout(action) => match app.flyout_action(action) {
                     FlyoutEffect::Refresh => {
@@ -521,6 +527,7 @@ fn main() -> ExitCode {
                 Event::SettingsClosed(place) => {
                     app.set_settings_place(place.map(placement));
                     app.volume_icon_window_closed();
+                    app.settings_closed();
                 }
                 Event::VolumeIcon(outcome) => {
                     if app.volume_icon_outcome(outcome) {

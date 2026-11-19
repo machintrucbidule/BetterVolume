@@ -20,7 +20,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-pub use bv_core::apps::{AppKey, Stream};
+pub use bv_core::apps::{AppKey, HeardApp, Stream};
 pub use bv_core::audio::{Bus, DeviceInfo, DeviceState, Flow, FormFactor, Role};
 pub use bv_core::settings::SwitchScope;
 
@@ -190,6 +190,11 @@ pub trait AudioEngine {
     /// The audio sessions of the current output (empty when not watched). Group them with
     /// [`bv_core::apps::rows`].
     fn sessions(&self) -> &[Stream];
+
+    /// The applications heard playing on the current output for the first time since the
+    /// last call (the engine follows what plays at all times, FR-096), with what could be
+    /// read of them; a process whose executable cannot be read is left out.
+    fn take_heard_apps(&mut self) -> Vec<HeardApp>;
 
     /// Sets the volume of every session of `app`, in percent, unmuting them (FR-062).
     fn set_app_volume(&mut self, app: &AppKey, percent: u8) -> Result<(), AudioError>;

@@ -96,7 +96,7 @@ fn notice(content: &SettingsContent) -> Option<Notice> {
 fn the_page_shows_the_saved_settings_and_the_status() {
     let (app, _) = app(configured());
     let content = app.settings_content();
-    assert_eq!(content.nav.len(), 4, "General, Devices, Home Assistant, About");
+    assert_eq!(content.nav.len(), 5, "General, Devices, Applications, Home Assistant, About");
     assert_eq!(content.page, Page::HomeAssistant.key());
     let switch = content.card(HaKey::Enabled.key()).unwrap();
     assert!(matches!(switch.control, CardControl::Toggle { on: true, .. }));

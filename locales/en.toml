@@ -131,6 +131,21 @@ settings.forget_detail = "Its name, icon and place will be lost. If it comes bac
 settings.forget_confirm = "Forget"
 settings.cancel = "Cancel"
 
+# Applications page of the settings window (FR-096 to FR-099).
+settings.page_apps = "Applications"
+settings.apps_help = "Applications that played sound on this PC. Drag a row to change their order in the panel (or Alt+Up / Alt+Down); the eye hides an application from the panel without touching its sound."
+settings.apps_sort = "Sort alphabetically"
+# {file} = the program file of the application (for example chrome.exe), {state} = in use or closed.
+settings.app_detail = "{file} · {state}"
+settings.app_running = "In use"
+settings.app_closed = "Closed"
+settings.system_sounds_detail = "The sounds of Windows: notifications, alerts"
+settings.app_forget_question = "Forget this application?"
+settings.app_forget_detail = "Its place and setting will be lost. If it plays sound again, it will appear as a new application."
+settings.apps_sort_question = "Sort alphabetically?"
+settings.apps_sort_text = "Your order will be lost. New applications will then take their alphabetical place."
+settings.apps_sort_confirm = "Sort"
+
 # Device icon catalogue (FR-068).
 icon.desktop_speakers = "Desktop speakers"
 icon.bookshelf_speakers = "Bookshelf speakers"

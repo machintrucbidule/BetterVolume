@@ -575,8 +575,8 @@ fn flyouts(gfx: &Graphics, out: &Path) {
 fn settings_windows(gfx: &Graphics, out: &Path) {
     use bv_ui_kit::controls::settings::{
         Block, Button, Card, CardControl, CloseQuestion, DeviceRow, DeviceTexts, NavEntry, Notice,
-        PageKey, Question, SettingKey, SettingsContent, SettingsKey, SettingsView, Severity,
-        TextField,
+        PageKey, Question, RowPicture, SettingKey, SettingsContent, SettingsKey, SettingsView,
+        Severity, TextField,
     };
     std::fs::create_dir_all(out.join("settings")).expect("settings folder");
     let toggle =
@@ -640,13 +640,12 @@ fn settings_windows(gfx: &Graphics, out: &Path) {
         Block::Device(DeviceRow {
             key: SettingKey(key),
             list,
-            icon,
-            chosen_icon: None,
-            automatic_icon: icon,
+            picture: RowPicture::Device { shown: icon, chosen: None, automatic: icon },
             name: name.into(),
             detail: detail.into(),
             hidden,
-            connected,
+            renamable: true,
+            forgettable: !connected,
         })
     };
     let devices = SettingsContent {
@@ -684,6 +683,67 @@ fn settings_windows(gfx: &Graphics, out: &Path) {
             device(20, 1, DeviceIcon::DeskMicrophone, "Micro USB", "Microphone (Yeti Stereo Microphone) · connecté", false, true),
         ],
         ..general.clone()
+    };
+    // Applications page: application icons (a made-up picture stands for a loaded one),
+    // the generic picture, System sounds; a hidden row; the forget question; sorting.
+    let picture = |rgb: [u8; 3]| {
+        let side = 48u32;
+        let mut data = Vec::with_capacity((side * side * 4) as usize);
+        for y in 0..side {
+            for x in 0..side {
+                let inside = (4..side - 4).contains(&x) && (4..side - 4).contains(&y);
+                let alpha = if inside { 255u8 } else { 0 };
+                let shade = |c: u8| ((u32::from(c) * (side + y) / (2 * side)) as u8).min(alpha);
+                data.extend([shade(rgb[2]), shade(rgb[1]), shade(rgb[0]), alpha]);
+            }
+        }
+        Some(std::rc::Rc::new(bv_ui_kit::backend::Pixels { width: side, height: side, data }))
+    };
+    let app = |key: u64, picture: RowPicture, name: &str, detail: &str, hidden: bool| {
+        let forgettable = !matches!(picture, RowPicture::SystemSounds);
+        Block::Device(DeviceRow {
+            key: SettingKey(key),
+            list: 0,
+            picture,
+            name: name.into(),
+            detail: detail.into(),
+            hidden,
+            renamable: false,
+            forgettable,
+        })
+    };
+    let applications = SettingsContent {
+        nav: vec![
+            nav[0].clone(),
+            NavEntry { key: PageKey(2), icon: Icon::Devices, label: "Périphériques".into() },
+            NavEntry { key: PageKey(4), icon: Icon::App, label: "Applications".into() },
+            nav[1].clone(),
+        ],
+        page: PageKey(4),
+        title: "Applications".into(),
+        devices: DeviceTexts {
+            forget_question: "Oublier cette application ?".into(),
+            forget_detail: "Sa place et son réglage seront perdus. Si elle refait du son, elle réapparaîtra comme une nouvelle application.".into(),
+            ..devices.devices.clone()
+        },
+        blocks: vec![
+            Block::Text("Les applications qui ont fait du son sur ce PC. Faites glisser une ligne pour changer l’ordre dans le panneau (ou Alt+Haut / Alt+Bas) ; l’œil la masque du panneau sans toucher à son son.".into()),
+            Block::Buttons(vec![Button { key: SettingKey(49), label: "Trier par ordre alphabétique".into(), accent: false, enabled: true }]),
+            app(50, RowPicture::App { pixels: picture([0x1A, 0x73, 0xE8]), source: None }, "Navigateur", "browser.exe · En cours d’utilisation", false),
+            app(51, RowPicture::App { pixels: picture([0x58, 0x65, 0xF2]), source: None }, "Discussion", "chat.exe · Fermée", false),
+            app(52, RowPicture::App { pixels: None, source: None }, "Lecteur de musique", "player.exe · Fermée", true),
+            app(53, RowPicture::SystemSounds, "Sons système", "Les sons de Windows : notifications, alertes", false),
+        ],
+        ..devices.clone()
+    };
+    let sorting = SettingsContent {
+        question: Some(Question {
+            title: "Trier par ordre alphabétique ?".into(),
+            text: "Votre ordre sera perdu. Les nouvelles applications prendront ensuite leur place alphabétique.".into(),
+            primary: "Trier".into(),
+            secondary: "Annuler".into(),
+        }),
+        ..applications.clone()
     };
     let field = |value: &str, placeholder: &str, password: bool, digits_only: bool| {
         CardControl::TextField(TextField {
@@ -804,6 +864,9 @@ fn settings_windows(gfx: &Graphics, out: &Path) {
             ("renommer", &devices, 7),
             ("icones", &devices, 8),
             ("oublier", &devices, 9),
+            ("applications", &applications, 0),
+            ("applications-oublier", &applications, 12),
+            ("applications-trier", &sorting, 0),
         ] {
             for (scale, text_scale) in [(1.0f32, 1.0f32), (1.5, 1.0), (1.0, 1.5)] {
                 let measure = flyout::GraphicsMeasure { graphics: gfx, text_scale };
@@ -835,6 +898,11 @@ fn settings_windows(gfx: &Graphics, out: &Path) {
                     }
                     9 => {
                         tab(&mut view, 11);
+                        view.key(SettingsKey::Enter, &measure);
+                    }
+                    // Applications page: the bin of the first application.
+                    12 => {
+                        tab(&mut view, 4);
                         view.key(SettingsKey::Enter, &measure);
                     }
                     // Home Assistant page: a password being typed (keyboard focus), the

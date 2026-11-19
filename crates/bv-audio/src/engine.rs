@@ -1,6 +1,6 @@
 //! The Windows implementation of [`AudioEngine`].
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{self, Receiver};
 
 use windows::Win32::Devices::FunctionDiscovery::{
@@ -21,12 +21,13 @@ use crate::activity::{follow_default, hear, ActivityWatch};
 use crate::com::{
     audio_error, pcwstr, string_property, take_string, u32_property, wide, Apartment,
 };
+use crate::process;
 use crate::service::ServiceWatch;
 use crate::sessions::SessionWatch;
 use crate::signals::{DeviceWatcher, Signal, Sink, VolumeWatcher};
 use crate::{
     AppKey, AudioEngine, AudioError, Changes, DeviceInfo, DeviceState, Endpoint, Flow, FormFactor,
-    Notify, Role, Stream, SwitchScope,
+    HeardApp, Notify, Role, Stream, SwitchScope,
 };
 
 /// What the engine currently knows; what the [`AudioEngine`] accessors return.
@@ -94,6 +95,9 @@ impl Drop for Core {
     }
 }
 
+/// Most processes remembered as already identified (far more than play at once).
+const IDENTIFIED_LIMIT: usize = 256;
+
 /// The audio engine. Lives on the UI thread (it is neither `Send` nor `Sync`).
 pub struct Engine {
     sink: Sink,
@@ -105,6 +109,11 @@ pub struct Engine {
     names: crate::sessions::Names,
     /// Where each process was last heard: process identifier to output device.
     heard: HashMap<u32, String>,
+    /// Processes already looked at for the Applications page (FR-096): each playing
+    /// process is identified once.
+    identified: HashSet<u32>,
+    /// Applications identified and not handed out yet.
+    heard_apps: Vec<HeardApp>,
     state: State,
     core: Option<Core>,
     service: Option<ServiceWatch>,
@@ -131,6 +140,8 @@ impl Engine {
             sessions_wanted: false,
             names: crate::sessions::Names::default(),
             heard: HashMap::new(),
+            identified: HashSet::new(),
+            heard_apps: Vec::new(),
             state: State::default(),
             service,
             _apartment: apartment,
@@ -289,6 +300,29 @@ impl Engine {
             follow_default(&mut self.heard, from, &device, &present);
         }
         hear(&mut self.heard, &device, &playing, &present);
+        self.identify(&playing);
+    }
+
+    /// Reads the executable and name of every process in `playing` not looked at yet, for
+    /// [`AudioEngine::take_heard_apps`]. Only processes that start playing are opened, once.
+    fn identify(&mut self, playing: &[u32]) {
+        for &pid in playing {
+            if pid == 0 || self.identified.contains(&pid) {
+                continue;
+            }
+            if self.identified.len() >= IDENTIFIED_LIMIT {
+                // Starting over only means looking at a playing process once more.
+                self.identified.clear();
+            }
+            self.identified.insert(pid);
+            let Some(path) = process::image_path(pid) else { continue };
+            let name = crate::sessions::friendly_name_cached(&self.names, &path);
+            self.heard_apps.push(HeardApp {
+                app: AppKey::executable(&path),
+                name,
+                path: Some(path),
+            });
+        }
     }
 
     fn publish_sessions(&mut self, changes: &mut Changes) {
@@ -439,6 +473,10 @@ impl AudioEngine for Engine {
 
     fn sessions(&self) -> &[Stream] {
         &self.state.streams
+    }
+
+    fn take_heard_apps(&mut self) -> Vec<HeardApp> {
+        std::mem::take(&mut self.heard_apps)
     }
 
     fn set_app_volume(&mut self, app: &AppKey, percent: u8) -> Result<(), AudioError> {

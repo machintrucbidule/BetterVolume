@@ -1,6 +1,6 @@
 //! Painting of the settings window.
 
-use super::content::{Block, CardControl, DeviceRow};
+use super::content::{Block, CardControl, DeviceRow, RowPicture};
 use super::layout::RowLayout;
 use super::{Part, SettingsView, Target};
 use crate::backend::{Canvas, TextAlign};
@@ -332,28 +332,57 @@ fn paint_row(ctx: Ctx<'_>, canvas: &mut Canvas<'_>, row: &DeviceRow, laid: &RowL
     let (grip, _) = t::GRIP;
     canvas.glyph(Icon::Grip.glyph(), grip, at(laid.grip), theme.text_secondary);
 
-    // Icon button: outlined, like the mockup.
     let key = row.key;
-    let s = state(Target::Row(key, Part::Icon), true);
     let icon_rect = at(laid.icon);
-    let open = view.picker.is_some_and(|p| p.key == key);
-    let fill = if s.pressed || open {
-        theme.controls.fill_pressed
-    } else if s.hot {
-        theme.controls.fill_hover
-    } else {
-        theme.controls.fill
-    };
-    canvas.fill_rounded(icon_rect, t::CONTROL_RADIUS, fill);
-    canvas.stroke_rounded(icon_rect.inset(0.5, 0.5), t::CONTROL_RADIUS, 1.0, theme.controls.stroke);
     let (_, icon_size, _) = t::ROW_ICON;
     let origin = Point::new(
         icon_rect.x + (icon_rect.width - icon_size) / 2.0,
         icon_rect.y + (icon_rect.height - icon_size) / 2.0,
     );
-    device_icon::paint(canvas, row.icon, origin, icon_size, main);
-    if s.focused {
-        focus_ring(canvas, icon_rect, t::CONTROL_RADIUS, theme);
+    let (app_size, glyph_size) = t::ROW_APP_ICON;
+    let centred = |size: f32| {
+        Rect::new(
+            (icon_rect.x + (icon_rect.width - size) / 2.0).round(),
+            (icon_rect.y + (icon_rect.height - size) / 2.0).round(),
+            size,
+            size,
+        )
+    };
+    match &row.picture {
+        RowPicture::Device { shown, .. } => {
+            // Icon button: outlined, like the mockup.
+            let s = state(Target::Row(key, Part::Icon), true);
+            let open = view.picker.is_some_and(|p| p.key == key);
+            let fill = if s.pressed || open {
+                theme.controls.fill_pressed
+            } else if s.hot {
+                theme.controls.fill_hover
+            } else {
+                theme.controls.fill
+            };
+            canvas.fill_rounded(icon_rect, t::CONTROL_RADIUS, fill);
+            canvas.stroke_rounded(
+                icon_rect.inset(0.5, 0.5),
+                t::CONTROL_RADIUS,
+                1.0,
+                theme.controls.stroke,
+            );
+            device_icon::paint(canvas, *shown, origin, icon_size, main);
+            if s.focused {
+                focus_ring(canvas, icon_rect, t::CONTROL_RADIUS, theme);
+            }
+        }
+        // An application: its own icon, dimmed with the row when hidden.
+        RowPicture::App { pixels: Some(image), .. } => {
+            let opacity = if row.hidden { t::HIDDEN_PICTURE_OPACITY } else { 1.0 };
+            canvas.image(image, centred(app_size), opacity);
+        }
+        RowPicture::App { pixels: None, .. } => {
+            canvas.glyph(Icon::App.glyph(), glyph_size, centred(glyph_size), main);
+        }
+        RowPicture::SystemSounds => {
+            canvas.glyph(Icon::SystemSounds.glyph(), glyph_size, centred(glyph_size), main);
+        }
     }
 
     match view.edit_of(key) {
@@ -377,13 +406,15 @@ fn paint_row(ctx: Ctx<'_>, canvas: &mut Canvas<'_>, row: &DeviceRow, laid: &RowL
         }
     }
 
-    glyph_button(
-        canvas,
-        theme,
-        at(laid.rename),
-        Icon::Edit,
-        state(Target::Row(key, Part::Rename), true),
-    );
+    if let Some(rename) = laid.rename {
+        glyph_button(
+            canvas,
+            theme,
+            at(rename),
+            Icon::Edit,
+            state(Target::Row(key, Part::Rename), true),
+        );
+    }
     let eye = if row.hidden { Icon::Hidden } else { Icon::Shown };
     glyph_button(
         canvas,
@@ -658,13 +689,14 @@ fn paint_picker(
     let layout = &view.layout;
     let Some(picker) = &layout.picker else { return };
     let Some(row) = view.content.row(picker.key) else { return };
+    let RowPicture::Device { automatic, .. } = row.picture else { return };
     let texts = &view.content.devices;
     canvas.clipped(layout.page, |canvas| {
         let panel = layout.on_screen(picker.rect);
         canvas.fill_rounded(panel, t::CARD_RADIUS, theme.window.card);
         canvas.stroke_rounded(panel.inset(0.5, 0.5), t::CARD_RADIUS, 1.0, theme.window.card_stroke);
         let chosen = row
-            .chosen_icon
+            .chosen_icon()
             .and_then(|c| DeviceIcon::ALL.iter().position(|i| *i == c))
             .map_or(0, |p| p + 1);
         for (i, cell) in picker.cells.iter().enumerate() {
@@ -690,7 +722,7 @@ fn paint_picker(
             match icon {
                 Some(icon) => device_icon::paint(canvas, icon, origin, size, color),
                 // "Automatic": the icon chosen from the type Windows declares.
-                None => device_icon::paint(canvas, row.automatic_icon, origin, size, color),
+                None => device_icon::paint(canvas, automatic, origin, size, color),
             }
             let name = if i == 0 {
                 &texts.automatic

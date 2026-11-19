@@ -113,6 +113,20 @@ settings.forget_detail = "Son nom, son icône et sa place seront perdus. S’il 
 settings.forget_confirm = "Oublier"
 settings.cancel = "Annuler"
 
+# Page Applications (FR-096 à FR-099).
+settings.page_apps = "Applications"
+settings.apps_help = "Les applications qui ont fait du son sur ce PC. Faites glisser une ligne pour changer leur ordre dans le panneau (ou Alt+Haut / Alt+Bas) ; l’œil masque une application du panneau sans toucher à son son."
+settings.apps_sort = "Trier par ordre alphabétique"
+settings.app_detail = "{file} · {state}"
+settings.app_running = "En cours d’utilisation"
+settings.app_closed = "Fermée"
+settings.system_sounds_detail = "Les sons de Windows : notifications, alertes"
+settings.app_forget_question = "Oublier cette application ?"
+settings.app_forget_detail = "Sa place et son réglage seront perdus. Si elle refait du son, elle réapparaîtra comme une nouvelle application."
+settings.apps_sort_question = "Trier par ordre alphabétique ?"
+settings.apps_sort_text = "Votre ordre sera perdu. Les nouvelles applications prendront ensuite leur place alphabétique."
+settings.apps_sort_confirm = "Trier"
+
 icon.desktop_speakers = "Enceintes de bureau"
 icon.bookshelf_speakers = "Enceintes bibliothèque"
 icon.soundbar = "Barre de son"

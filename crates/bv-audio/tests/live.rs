@@ -197,6 +197,40 @@ fn follows_the_session_of_this_process_live() {
 }
 
 #[test]
+fn an_application_heard_while_sessions_are_not_watched_is_identified() {
+    let (mut engine, wakes) = new_engine();
+    if !has_output(&engine) {
+        eprintln!("no output device on this machine: nothing more to check");
+        return;
+    }
+    let exe = std::env::current_exe().unwrap().to_string_lossy().into_owned();
+    let me = AppKey::executable(&exe);
+    // The sessions are not watched (the flyout is closed): the application is still
+    // identified once it plays (FR-096).
+    let Some(stream) = SilentStream::start() else {
+        eprintln!("the default output refuses a shared stream: nothing more to check");
+        return;
+    };
+    let deadline = Instant::now() + TIMEOUT;
+    let mut heard = Vec::new();
+    while !heard.iter().any(|h: &bv_audio::HeardApp| h.app == me) {
+        engine.process_signals();
+        heard.extend(engine.take_heard_apps());
+        let Some(left) = deadline.checked_duration_since(Instant::now()) else { break };
+        let _ = wakes.recv_timeout(left.min(Duration::from_millis(200)));
+    }
+    let found = heard.iter().find(|h| h.app == me);
+    let found = found.expect("this program is identified while it plays");
+    assert!(found.path.as_deref().is_some_and(|p| p.eq_ignore_ascii_case(&exe)));
+    assert!(!found.name.is_empty());
+    assert!(engine.sessions().is_empty(), "sessions themselves stay unwatched");
+    drop(stream);
+    // Identified once: nothing more for the same process.
+    engine.process_signals();
+    assert!(!engine.take_heard_apps().iter().any(|h| h.app == me));
+}
+
+#[test]
 #[ignore = "changes the volume Windows keeps for this test program; run with tools/audio-live.ps1"]
 fn application_volume_and_mute_round_trip() {
     // Only the session of this test process is changed: nothing the user hears changes,

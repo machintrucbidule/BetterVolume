@@ -23,7 +23,8 @@ mod tests;
 
 pub use content::{
     Block, Button, Card, CardControl, CloseQuestion, DeviceRow, DeviceTexts, NavEntry, Notice,
-    PageKey, Question, SettingKey, SettingsAction, SettingsContent, Severity, TextField,
+    PageKey, Question, RowPicture, SettingKey, SettingsAction, SettingsContent, Severity,
+    TextField,
 };
 
 use crate::access::{AccessAction, AccessNode, AccessRole};
@@ -365,7 +366,7 @@ impl SettingsView {
         if self.picker.is_some_and(|p| self.content.row(p.key).is_none()) {
             self.picker = None;
         }
-        if self.confirm.is_some_and(|k| self.content.row(k).is_none_or(|r| r.connected)) {
+        if self.confirm.is_some_and(|k| self.content.row(k).is_none_or(|r| !r.forgettable)) {
             self.confirm = None;
         }
         if self.drag.as_ref().is_some_and(|d| self.content.row(d.key).is_none()) {
@@ -809,16 +810,20 @@ impl SettingsView {
                 }
                 Block::Device(row) => {
                     let key = row.key;
-                    stops.push(Target::Row(key, Part::Icon));
+                    if row.has_icon_button() {
+                        stops.push(Target::Row(key, Part::Icon));
+                    }
                     if let Some(picker) = self.picker.filter(|p| p.key == key) {
                         stops.push(Target::Cell(picker.highlight));
                     }
                     if self.edit.as_ref().is_some_and(|e| e.key == key) {
                         stops.push(Target::Row(key, Part::TextBox));
                     }
-                    stops.push(Target::Row(key, Part::Rename));
+                    if row.renamable {
+                        stops.push(Target::Row(key, Part::Rename));
+                    }
                     stops.push(Target::Row(key, Part::Visibility));
-                    if !row.connected {
+                    if row.forgettable {
                         stops.push(Target::Row(key, Part::Forget));
                     }
                 }
@@ -1432,7 +1437,9 @@ fn exists(
         }
         Target::Thumb => layout.scroll_thumb().is_some(),
         Target::Row(key, part) => content.row(key).is_some_and(|row| match part {
-            Part::Forget => !row.connected,
+            Part::Forget => row.forgettable,
+            Part::Icon => row.has_icon_button(),
+            Part::Rename => row.renamable,
             Part::TextBox => edit.is_some_and(|e| e.key == key),
             _ => true,
         }),

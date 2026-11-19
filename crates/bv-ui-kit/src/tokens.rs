@@ -339,6 +339,11 @@ pub mod settings {
     pub const GRIP: (f32, f32) = (16.0, 8.0);
     /// Size of the icon button of a row, the device icon in it, and the gap after it.
     pub const ROW_ICON: (f32, f32, f32) = (40.0, 24.0, 12.0);
+    /// An application row (no button around its picture): size of the application icon,
+    /// and of the glyph drawn for System sounds or an application without an icon.
+    pub const ROW_APP_ICON: (f32, f32) = (24.0, 20.0);
+    /// Opacity of an application icon on a hidden row (its text is in secondary colour).
+    pub const HIDDEN_PICTURE_OPACITY: f32 = 0.6;
     /// Size of the other row buttons (square), their glyph, and the gap between them.
     pub const ROW_BUTTON: (f32, f32, f32) = (36.0, 16.0, 4.0);
     /// Height of a text box at 100 % text, and its horizontal padding.
@@ -359,6 +364,8 @@ pub mod settings {
     pub const CONFIRM: (f32, f32) = (320.0, 16.0);
     /// Push buttons: height at 100 % text, horizontal padding, gap between two.
     pub const BUTTON: (f32, f32, f32) = (32.0, 12.0, 8.0);
+    /// Space under a button row followed by more content (a list under its buttons).
+    pub const BUTTONS_GAP_AFTER: f32 = 12.0;
     /// Pointer travel before a press on a row becomes a drag.
     pub const DRAG_THRESHOLD: f32 = 4.0;
     /// Width of a text field in a card.

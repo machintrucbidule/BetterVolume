@@ -28,7 +28,7 @@ pub(crate) struct CardLayout {
     pub switch_label: Option<Rect>,
 }
 
-/// Where a device row and its parts are.
+/// Where a device or application row and its parts are.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RowLayout {
     pub key: SettingKey,
@@ -41,7 +41,8 @@ pub(crate) struct RowLayout {
     pub text_box: Rect,
     /// Message of a refused name, under the text box.
     pub error: Option<Rect>,
-    pub rename: Rect,
+    /// The rename button (renamable rows only).
+    pub rename: Option<Rect>,
     pub visibility: Rect,
     pub forget: Option<Rect>,
 }
@@ -365,7 +366,9 @@ pub(crate) fn layout(
                     left += size.width + t::BUTTON.2;
                     tallest = tallest.max(size.height);
                 }
-                y += tallest + t::CARD_GAP;
+                // Buttons above a list stand apart from its first row.
+                let last = position + 1 == content.blocks.len();
+                y += tallest + if last { t::CARD_GAP } else { t::BUTTONS_GAP_AFTER };
             }
             Block::Device(row) => {
                 let editing = extras.editing.filter(|(key, _)| *key == row.key);
@@ -386,11 +389,13 @@ pub(crate) fn layout(
                 let (button, _, button_gap) = t::ROW_BUTTON;
                 let visibility =
                     Rect::new(rect.right() - pad_x - button, middle(button), button, button);
-                let rename = Rect { x: visibility.x - button_gap - button, ..visibility };
-                let forget = (!row.connected)
-                    .then_some(Rect { x: rename.x - button_gap - button, ..rename });
+                // Right to left: eye, pencil (renamable rows), bin (forgettable rows).
+                let left_of = |r: Rect| Rect { x: r.x - button_gap - button, ..r };
+                let rename = row.renamable.then(|| left_of(visibility));
+                let forget = row.forgettable.then(|| left_of(rename.unwrap_or(visibility)));
                 let text_x = icon.right() + icon_after;
-                let text_right = forget.unwrap_or(rename).x - t::CARD_CONTROL_GAP;
+                let leftmost = forget.or(rename).unwrap_or(visibility);
+                let text_right = leftmost.x - t::CARD_CONTROL_GAP;
                 let text_width = (text_right - text_x).max(1.0);
                 let text_top = middle(text_height);
                 laid.rows.push(RowLayout {
