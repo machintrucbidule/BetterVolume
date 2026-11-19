@@ -51,6 +51,8 @@ const EMBEDDED_HELPER: &str = "embedded";
 const COPY_PREFIX: &str = "bv_taskbar_helper-";
 /// Sub-folder of the data folder holding the copies.
 const COPY_FOLDER: &str = "taskbar-helper";
+/// A copy changed less than this ago is in a loader's hands and is never removed.
+const COPY_FRESH: Duration = Duration::from_secs(60);
 
 /// CLSID of the helper's tree-automation provider (`bv-taskbar-helper`,
 /// `CLSID_BV_TASKBAR_HELPER`; the executable does not link that library).
@@ -461,12 +463,19 @@ fn load(args: &[String]) -> Result<(), LoaderError> {
 }
 
 /// Copies the helper library (`bytes`) to `folder`, named after its content, unless that copy is
-/// already there; removes older copies that are no longer in use (a copy loaded in the
-/// taskbar stays until the taskbar restarts). Returns the copy's path.
+/// already there; removes older copies that are no longer in use ([`remove_copies`]).
+/// Returns the copy's path.
 fn copy_helper(bytes: &[u8], folder: &Path) -> Option<PathBuf> {
     let name = format!("{COPY_PREFIX}{:016x}.dll", fnv1a(bytes));
     let copy = folder.join(&name);
     std::fs::create_dir_all(folder).ok()?;
+    // An existing copy is marked as just used first, so another process tidying the folder
+    // leaves it (the taskbar may not hold it yet). Fails harmlessly while the taskbar
+    // holds it, or when there is no copy yet.
+    let _ = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&copy)
+        .and_then(|file| file.set_modified(std::time::SystemTime::now()));
     let complete = |path: &Path| std::fs::read(path).ok().as_deref() == Some(bytes);
     if !complete(&copy) {
         // Written beside, then renamed: a half-written library is never loaded. The
@@ -482,18 +491,45 @@ fn copy_helper(bytes: &[u8], folder: &Path) -> Option<PathBuf> {
             }
         }
     }
-    if let Ok(entries) = std::fs::read_dir(folder) {
-        for entry in entries.flatten() {
-            let file = entry.file_name();
-            let file = file.to_string_lossy();
-            // Older copies only: a temporary file belongs to a loader still writing it.
-            if file.starts_with(COPY_PREFIX) && file.ends_with(".dll") && file != name {
-                // Fails while the taskbar holds it: it goes at a later load.
-                let _ = std::fs::remove_file(entry.path());
-            }
+    remove_copies(folder, Some(&name), COPY_FRESH);
+    Some(copy)
+}
+
+/// Removes the copies of the helper library the taskbar no longer holds, and their folder
+/// once empty. Called at start while the Windows volume icon is not to be hidden (no
+/// loader runs then, so nothing else would remove them). `folder` is the data folder.
+pub fn remove_unused_helper_copies(folder: &Path) {
+    let folder = folder.join(COPY_FOLDER);
+    remove_copies(&folder, None, COPY_FRESH);
+    // Fails while a copy is still there (held by the taskbar): it goes at a later start.
+    let _ = std::fs::remove_dir(&folder);
+}
+
+/// Removes the copies in `folder` except `keep` and those changed less than `fresh` ago (just
+/// written or reused by a loader that has not had the taskbar load it yet, perhaps of
+/// another copy of BetterVolume sharing the folder). A temporary file is removed on the same
+/// terms: a fresh one belongs to a loader still writing it, an old one to a loader that
+/// ended halfway. A copy the taskbar holds cannot be deleted: it goes once the taskbar has
+/// restarted.
+fn remove_copies(folder: &Path, keep: Option<&str>, fresh: Duration) {
+    let Ok(entries) = std::fs::read_dir(folder) else { return };
+    for entry in entries.flatten() {
+        let file = entry.file_name();
+        let file = file.to_string_lossy();
+        let ours = file.ends_with(".dll") || file.ends_with(".partial");
+        if !file.starts_with(COPY_PREFIX) || !ours || Some(&*file) == keep {
+            continue;
+        }
+        let age = entry
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|time| time.elapsed().ok());
+        // Unknown age (clock moved back): treated as fresh, kept for a later pass.
+        if age.is_some_and(|age| age >= fresh) {
+            let _ = std::fs::remove_file(entry.path());
         }
     }
-    Some(copy)
 }
 
 /// FNV-1a 64-bit hash: a content name for the copies (not a security measure).
@@ -562,8 +598,67 @@ mod tests {
 
         let second = copy_helper(b"second", &folder).expect("copied");
         assert_ne!(first, second);
+        assert!(first.exists(), "a copy used less than a minute ago stays");
+        set_age(&first, COPY_FRESH * 2);
+        assert_eq!(copy_helper(b"second", &folder), Some(second.clone()));
         assert!(!first.exists(), "the unused older copy is removed");
         assert!(second.exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Dates the last change of `path` back by `age`.
+    fn set_age(path: &Path, age: Duration) {
+        let file = std::fs::OpenOptions::new().write(true).open(path).expect("open");
+        file.set_modified(std::time::SystemTime::now() - age).expect("dated");
+    }
+
+    #[test]
+    fn a_reused_copy_is_marked_as_just_used() {
+        let base = std::env::temp_dir().join(format!("bv-helper-reuse-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let copy = copy_helper(b"same", &base).expect("copied");
+        set_age(&copy, COPY_FRESH * 2);
+        copy_helper(b"same", &base).expect("reused");
+        remove_copies(&base, None, COPY_FRESH);
+        assert!(copy.exists(), "a reused copy is not removed before the taskbar loads it");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn unused_copies_go_at_start_and_then_their_folder() {
+        let base = std::env::temp_dir().join(format!("bv-helper-tidy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let folder = base.join(COPY_FOLDER);
+        std::fs::create_dir_all(&folder).expect("folder");
+        let old = folder.join(format!("{COPY_PREFIX}0000000000000001.dll"));
+        let fresh = folder.join(format!("{COPY_PREFIX}0000000000000002.dll"));
+        let partial = folder.join(format!("{COPY_PREFIX}0000000000000003.dll.7.partial"));
+        let stale = folder.join(format!("{COPY_PREFIX}0000000000000005.dll.8.partial"));
+        let other = folder.join("notes.txt");
+        for path in [&old, &fresh, &partial, &stale, &other] {
+            std::fs::write(path, b"x").expect("written");
+        }
+        for path in [&old, &stale, &other] {
+            set_age(path, COPY_FRESH * 2);
+        }
+        remove_unused_helper_copies(&base);
+        assert!(!old.exists(), "an old copy goes");
+        assert!(!stale.exists(), "a temporary file of a loader that ended halfway goes");
+        assert!(fresh.exists(), "a copy a loader just wrote stays");
+        assert!(partial.exists(), "a temporary file still being written stays");
+        assert!(other.exists(), "nothing else is touched");
+
+        for path in [&fresh, &partial, &other] {
+            std::fs::remove_file(path).expect("removed");
+        }
+        let only = folder.join(format!("{COPY_PREFIX}0000000000000004.dll"));
+        std::fs::write(&only, b"x").expect("written");
+        set_age(&only, COPY_FRESH * 2);
+        remove_unused_helper_copies(&base);
+        assert!(!folder.exists(), "the empty folder goes too");
+        // Nothing there at all: nothing happens.
+        remove_unused_helper_copies(&base);
+        assert!(base.exists());
         let _ = std::fs::remove_dir_all(&base);
     }
 

@@ -59,7 +59,7 @@ pub use menu::MenuLine;
 pub use package::Package;
 pub use settings::WindowPlace;
 pub use system::{open_folder, SystemPage};
-pub use taskbar::{run_loader, VolumeIconOutcome, LOADER_ARGUMENT};
+pub use taskbar::{remove_unused_helper_copies, run_loader, VolumeIconOutcome, LOADER_ARGUMENT};
 pub use tray::show_icon_on_taskbar;
 pub use update::{
     launch_with, local_time_text, open_web_page, wait_for_process, REPLACED_ARGUMENT,

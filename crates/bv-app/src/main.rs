@@ -373,6 +373,9 @@ fn main() -> ExitCode {
         // FR-018: the Windows volume icon is hidden again at each start.
         if app.volume_icon_hidden() {
             hide_volume_icon(shell, true, false);
+        } else {
+            // No loader runs, so the copies left from earlier loads are removed here.
+            bv_shell::remove_unused_helper_copies(&helper_folder());
         }
         let mut tooltip = app.tooltip();
         shell.set_tooltip(&tooltip);

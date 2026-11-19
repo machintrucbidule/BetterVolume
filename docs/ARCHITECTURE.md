@@ -289,6 +289,15 @@ Decision: a small in-taskbar helper shipped with the app.
   NULL, copy, CLSID, "<command> <owner pid> <owner window>")`, trying N = 1, 2, … while the
   answer is `ERROR_NOT_FOUND` (one endpoint per XAML core). No COM registration is needed:
   the XAML host loads the library by path and calls its `DllGetClassObject`.
+- **Copies left behind.** The taskbar holds every copy it loaded until it restarts, so
+  one copy per version loaded since the last restart of Windows (or Explorer) stays; it
+  is deleted by the next load after that restart, or, while the volume icon is not to be
+  hidden (no loader runs), at the application's start
+  (`bv_shell::remove_unused_helper_copies`, which also removes the empty folder). A copy
+  changed less than a minute ago is in a loader's hands (perhaps of another copy of
+  BetterVolume sharing the folder) and is left alone; a reused copy is marked as just
+  used before it is checked. A temporary file left by a loader that ended halfway goes
+  on the same terms. After an uninstall, a copy still held stays until removed by hand.
 - **In the taskbar** (`bv-taskbar-helper`): `SetSite` reads the instruction, a thread of
   its own subscribes to the visual tree (the whole existing tree streams during the call),
   waits up to 10 s more only if the icon was not there yet, then unsubscribes: a
