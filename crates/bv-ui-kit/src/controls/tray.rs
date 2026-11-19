@@ -20,6 +20,14 @@ pub const LOGICAL_SIZE: f32 = 16.0;
 const LEVEL_START: f32 = 7.55;
 /// Stroke width of the Windows volume glyphs at 16 DIPs (measured).
 const STROKE: f32 = 1.0;
+/// Size "Large" (FR-083): the drawing stretched vertically about the middle of the icon.
+/// The Windows glyphs already span the whole width of the icon (the loudest step touches
+/// both sides); only their height leaves a margin. Their tallest part, the loudest step's
+/// outer wave (1.25 to 14.75 DIPs, measured), then fills the icon's height, 0.06 DIP from
+/// each edge.
+pub const LARGE_STRETCH: f32 = 20.0 / 17.0;
+/// Vertical middle of the icon, the line the large size is stretched about.
+const MIDDLE: f32 = LOGICAL_SIZE / 2.0;
 
 /// Type of the current output, shown by the "with device badge" style.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -42,6 +50,8 @@ pub struct TrayIcon {
     /// Style "with device badge": the device drawn in place of the speaker. `None`: the
     /// Windows speaker (style "same as Windows", or a device of no particular type).
     pub badge: Option<DeviceType>,
+    /// Size "Large" (FR-083): stretched to the icon's height ([`LARGE_STRETCH`]).
+    pub large: bool,
 }
 
 /// The scale to rasterise an icon of `pixels` × `pixels` at.
@@ -52,6 +62,15 @@ pub fn scale_for(pixels: u32) -> f32 {
 /// Paints the icon on a transparent canvas of [`LOGICAL_SIZE`] DIPs.
 pub fn paint(canvas: &mut Canvas<'_>, icon: &TrayIcon, theme: &Theme) {
     canvas.clear(Color::TRANSPARENT);
+    if icon.large {
+        canvas.stretched_vertically(LARGE_STRETCH, MIDDLE, |c| paint_icon(c, icon, theme));
+    } else {
+        paint_icon(canvas, icon, theme);
+    }
+}
+
+/// The icon at the Windows size (the stretch, if any, is already set).
+fn paint_icon(canvas: &mut Canvas<'_>, icon: &TrayIcon, theme: &Theme) {
     let full = Rect::new(0.0, 0.0, LOGICAL_SIZE, LOGICAL_SIZE);
     // No device: Windows shows the muted speaker, dimmed.
     let (level, color) = match icon.level {
@@ -170,13 +189,22 @@ mod tests {
     use crate::backend::{DeviceKind, Graphics, Pixels};
     use crate::ThemeInputs;
 
-    /// Small-icon sizes of every Windows scaling step (100 % to 225 %) and a large one.
-    const SIZES: [u32; 7] = [16, 20, 24, 28, 32, 36, 64];
+    /// Small-icon sizes of every Windows scaling step (100 % to 300 %) and a larger one.
+    const SIZES: [u32; 9] = [16, 20, 24, 28, 32, 36, 40, 48, 64];
     const DEVICES: [DeviceType; 4] =
         [DeviceType::Speakers, DeviceType::Headphones, DeviceType::Headset, DeviceType::Display];
 
     fn render(gfx: &Graphics, px: u32, paint: impl FnOnce(&mut Canvas<'_>)) -> Pixels {
         gfx.rasterize(px, px, scale_for(px), 1.0, paint).expect("rasterize")
+    }
+
+    /// Runs `draw` stretched like the large icon when `large`.
+    fn sized(c: &mut Canvas<'_>, large: bool, draw: impl FnOnce(&mut Canvas<'_>)) {
+        if large {
+            c.stretched_vertically(LARGE_STRETCH, MIDDLE, draw);
+        } else {
+            draw(c);
+        }
     }
 
     fn first_level_column(px: u32) -> u32 {
@@ -188,15 +216,15 @@ mod tests {
     fn nothing_of_the_windows_speaker_remains_next_to_the_device() {
         let gfx = Graphics::new(DeviceKind::Software).expect("graphics");
         let theme = Theme::shell(&ThemeInputs::default());
-        for px in SIZES {
+        for (px, large) in SIZES.into_iter().flat_map(|px| [(px, false), (px, true)]) {
             for device in DEVICES {
                 // Volume 0: the Windows glyph is the speaker alone, so after the cut only
                 // the device drawing may remain.
-                let icon = TrayIcon { level: Some(VolumeLevel::Zero), badge: Some(device) };
+                let icon = TrayIcon { level: Some(VolumeLevel::Zero), badge: Some(device), large };
                 let with_glyph = render(&gfx, px, |c| paint(c, &icon, &theme));
                 let device_only = render(&gfx, px, |c| {
                     c.clear(Color::TRANSPARENT);
-                    paint_device(c, device, theme.tray_glyph);
+                    sized(c, large, |c| paint_device(c, device, theme.tray_glyph));
                 });
                 // Left of the cut only the device; right of it, the dimmed waves.
                 for y in 0..px {
@@ -204,7 +232,7 @@ mod tests {
                         assert_eq!(
                             with_glyph.pixel(x, y),
                             device_only.pixel(x, y),
-                            "{device:?} at {px} px, pixel ({x}, {y}): speaker remnant"
+                            "{device:?} at {px} px (large {large}), pixel ({x}, {y}): speaker remnant"
                         );
                     }
                 }
@@ -237,10 +265,11 @@ mod tests {
         for (name, inputs) in themes {
             let theme = Theme::shell(&inputs);
             // Large enough for the 1-DIP wave stroke to cover whole pixels.
-            for px in [32, 64] {
+            for (px, large) in [(32, false), (64, false), (32, true), (64, true)] {
+                let name = format!("{name} (large {large})");
                 let draw = |level| {
                     render(&gfx, px, |c| {
-                        paint(c, &TrayIcon { level: Some(level), badge: None }, &theme)
+                        paint(c, &TrayIcon { level: Some(level), badge: None, large }, &theme)
                     })
                 };
                 let alpha = |img: &Pixels| {
@@ -265,12 +294,14 @@ mod tests {
                 let glyph_only = |level: VolumeLevel, color: Color| {
                     render(&gfx, px, |c| {
                         c.clear(Color::TRANSPARENT);
-                        c.glyph(
-                            level.icon().glyph(),
-                            LOGICAL_SIZE,
-                            Rect::new(0.0, 0.0, LOGICAL_SIZE, LOGICAL_SIZE),
-                            color,
-                        );
+                        sized(c, large, |c| {
+                            c.glyph(
+                                level.icon().glyph(),
+                                LOGICAL_SIZE,
+                                Rect::new(0.0, 0.0, LOGICAL_SIZE, LOGICAL_SIZE),
+                                color,
+                            );
+                        });
                     })
                 };
                 // Where only the outer wave of the Windows glyphs is (fully covered), a low
@@ -310,8 +341,9 @@ mod tests {
                     glyph_only(VolumeLevel::Muted, theme.tray_glyph),
                     "{name}"
                 );
-                let none =
-                    render(&gfx, px, |c| paint(c, &TrayIcon { level: None, badge: None }, &theme));
+                let none = render(&gfx, px, |c| {
+                    paint(c, &TrayIcon { level: None, badge: None, large }, &theme)
+                });
                 let dimmed = theme.tray_glyph.with_alpha(theme.tray_glyph.a * 0.6);
                 assert_eq!(none, glyph_only(VolumeLevel::Muted, dimmed), "{name}: no device");
             }
@@ -329,21 +361,21 @@ mod tests {
             VolumeLevel::High,
             VolumeLevel::Muted,
         ];
-        for px in SIZES {
+        for (px, large) in SIZES.into_iter().flat_map(|px| [(px, false), (px, true)]) {
             let first = first_level_column(px);
             for level in levels {
                 let plain = render(&gfx, px, |c| {
-                    paint(c, &TrayIcon { level: Some(level), badge: None }, &theme)
+                    paint(c, &TrayIcon { level: Some(level), badge: None, large }, &theme)
                 });
                 for device in DEVICES {
-                    let icon = TrayIcon { level: Some(level), badge: Some(device) };
+                    let icon = TrayIcon { level: Some(level), badge: Some(device), large };
                     let badged = render(&gfx, px, |c| paint(c, &icon, &theme));
                     for y in 0..px {
                         for x in first..px {
                             assert_eq!(
                                 badged.pixel(x, y),
                                 plain.pixel(x, y),
-                                "{device:?} {level:?} at {px} px, pixel ({x}, {y})"
+                                "{device:?} {level:?} at {px} px (large {large}), pixel ({x}, {y})"
                             );
                         }
                     }
@@ -351,7 +383,7 @@ mod tests {
                     // replaces, so the gap before the first wave stays the Windows one.
                     let device_only = render(&gfx, px, |c| {
                         c.clear(Color::TRANSPARENT);
-                        paint_device(c, device, theme.tray_glyph);
+                        sized(c, large, |c| paint_device(c, device, theme.tray_glyph));
                     });
                     let last = |img: &Pixels| {
                         (0..first)
@@ -360,7 +392,11 @@ mod tests {
                             .unwrap_or(0)
                     };
                     let speaker = render(&gfx, px, |c| {
-                        paint(c, &TrayIcon { level: Some(VolumeLevel::Zero), badge: None }, &theme)
+                        paint(
+                            c,
+                            &TrayIcon { level: Some(VolumeLevel::Zero), badge: None, large },
+                            &theme,
+                        )
                     });
                     assert!(
                         last(&speaker) > 0,
@@ -368,12 +404,122 @@ mod tests {
                     );
                     assert!(
                         last(&device_only) <= last(&speaker),
-                        "{device:?} at {px} px reaches column {}, the speaker {}",
+                        "{device:?} at {px} px (large {large}) reaches column {}, the speaker {}",
                         last(&device_only),
                         last(&speaker)
                     );
                 }
             }
         }
+    }
+
+    #[test]
+    fn the_large_icon_is_taller_whole_and_keeps_the_windows_widths() {
+        let gfx = Graphics::new(DeviceKind::Software).expect("graphics");
+        let levels = [
+            Some(VolumeLevel::Muted),
+            Some(VolumeLevel::Zero),
+            Some(VolumeLevel::Low),
+            Some(VolumeLevel::Medium),
+            Some(VolumeLevel::High),
+            None,
+        ];
+        let badges = [None, Some(DeviceType::Headphones), Some(DeviceType::Speakers)];
+        let mut problems = Vec::new();
+        for mode in [crate::theme::ThemeMode::Dark, crate::theme::ThemeMode::Light] {
+            let theme = Theme::shell(&ThemeInputs { system_mode: mode, ..ThemeInputs::default() });
+            for px in SIZES {
+                for level in levels {
+                    for badge in badges {
+                        let draw = |large| {
+                            render(&gfx, px, |c| {
+                                paint(c, &TrayIcon { level, badge, large }, &theme)
+                            })
+                        };
+                        let (windows, large) = (draw(false), draw(true));
+                        let what = format!("{mode:?} {level:?} {badge:?} at {px} px");
+                        // Half covered at least, whatever the colour's own opacity.
+                        let colour = match level {
+                            Some(_) => theme.tray_glyph.a,
+                            None => theme.tray_glyph.a * 0.6,
+                        };
+                        let inked = |img: &Pixels, x: u32, y: u32| {
+                            f32::from(img.pixel(x, y)[3]) > 0.5 * colour * 255.0
+                        };
+                        let span = |img: &Pixels, columns: bool| {
+                            let lines: Vec<u32> = (0..px)
+                                .filter(|&a| {
+                                    (0..px).any(|b| {
+                                        if columns {
+                                            inked(img, a, b)
+                                        } else {
+                                            inked(img, b, a)
+                                        }
+                                    })
+                                })
+                                .collect();
+                            (lines.first().copied(), lines.last().copied())
+                        };
+                        // Same width as the Windows icon: the same first and last columns,
+                        // give or take the half-covered edge pixel.
+                        let (w, l) = (span(&windows, true), span(&large, true));
+                        let near = |a: Option<u32>, b: Option<u32>| match (a, b) {
+                            (Some(a), Some(b)) => a.abs_diff(b) <= 1,
+                            _ => a == b,
+                        };
+                        if !near(w.0, l.0) || !near(w.1, l.1) {
+                            problems.push(format!("{what}: columns {l:?}, Windows {w:?}"));
+                        }
+                        // Taller by the stretch (within a pixel of rounding), inside the icon.
+                        let height = |s: (Option<u32>, Option<u32>)| match s {
+                            (Some(first), Some(last)) => last - first + 1,
+                            _ => 0,
+                        };
+                        let (w, l) = (height(span(&windows, false)), height(span(&large, false)));
+                        let expected = f64::from(w) * f64::from(LARGE_STRETCH);
+                        if f64::from(l) < expected - 2.5 || l > px {
+                            problems.push(format!("{what}: {l} rows, Windows {w}"));
+                        }
+                        // Not cut: drawn with room above and below, nothing goes past the
+                        // icon's square, and inside it the picture is the same.
+                        let room = px / 4;
+                        let roomy = gfx
+                            .rasterize(px, px + 2 * room, scale_for(px), 1.0, |c| {
+                                c.shifted_down(room as f32 / scale_for(px), |c| {
+                                    paint(c, &TrayIcon { level, badge, large: true }, &theme)
+                                })
+                            })
+                            .expect("rasterize");
+                        for y in 0..px + 2 * room {
+                            for x in 0..px {
+                                let got = roomy.pixel(x, y);
+                                let inside = (room..room + px).contains(&y);
+                                if inside && got != large.pixel(x, y - room) {
+                                    problems.push(format!("{what}: ({x}, {y}) differs with room"));
+                                } else if !inside && got[3] != 0 {
+                                    problems.push(format!("{what}: cut at ({x}, {y}): {got:?}"));
+                                }
+                            }
+                        }
+                        let full = colour * 255.0;
+                        // Drawn, not an enlarged picture: about as many fully covered pixels
+                        // as at the Windows size at least (stretching a picture blurs them).
+                        let solid = |img: &Pixels| {
+                            (0..px * px)
+                                .filter(|i| f32::from(img.pixel(i % px, i / px)[3]) >= 0.98 * full)
+                                .count()
+                        };
+                        if solid(&large) * 10 < solid(&windows) * 8 {
+                            problems.push(format!(
+                                "{what}: {} solid pixels, Windows {}",
+                                solid(&large),
+                                solid(&windows)
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
     }
 }

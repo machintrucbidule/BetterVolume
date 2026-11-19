@@ -79,6 +79,16 @@ pub enum TrayIconStyle {
     WithDeviceBadge,
 }
 
+/// Tray icon size (FR-083).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TrayIconSize {
+    /// The size of the Windows volume icon.
+    #[default]
+    SameAsWindows,
+    /// Taller, filling the height of the notification-area square.
+    Large,
+}
+
 /// How tall the flyout is.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum FlyoutHeight {
@@ -111,6 +121,8 @@ pub struct General {
     pub volume_bubble: bool,
     /// FR-078.
     pub tray_icon_style: TrayIconStyle,
+    /// FR-083.
+    pub tray_icon_size: TrayIconSize,
     /// FR-082.
     pub flyout_height: FlyoutHeight,
     /// FR-079. Off by default.
@@ -136,6 +148,7 @@ impl Default for General {
             switch_notification: true,
             volume_bubble: true,
             tray_icon_style: TrayIconStyle::default(),
+            tray_icon_size: TrayIconSize::default(),
             flyout_height: FlyoutHeight::default(),
             hide_windows_volume_icon: false,
             check_updates: true,
@@ -405,6 +418,7 @@ mod tests {
         assert!(general.switch_notification);
         assert!(general.volume_bubble);
         assert_eq!(general.tray_icon_style, TrayIconStyle::SameAsWindows);
+        assert_eq!(general.tray_icon_size, TrayIconSize::SameAsWindows);
         assert_eq!(general.flyout_height, FlyoutHeight::Full);
         assert!(!general.hide_windows_volume_icon);
         assert!(general.check_updates);

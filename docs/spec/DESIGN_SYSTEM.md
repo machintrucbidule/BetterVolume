@@ -54,6 +54,15 @@ animation effects, text scaling.
   of the gap). Other device types keep the Windows speaker. Automated pixel tests check,
   at every Windows scaling, that nothing of the original speaker remains and that the
   level part is exactly the Windows one.
+- Size "Large" (FR-083): the drawing above (either style) stretched vertically by 20/17
+  about y = 8 DIP (`tray::LARGE_STRETCH`): the loudest step's outer wave (1.25 to
+  14.75 DIP) then spans 0.06 to 15.94 DIP. Widths, strokes and the level cut are
+  unchanged. Inside the stretch, icon glyphs are drawn without grid fitting and without
+  pixel snapping of their position (`Canvas::stretched_vertically`): both would move
+  the glyph's vertical extremes by up to half a pixel, past the square's edge at some
+  scalings. Pixel tests at every scaling (100 to 300 %) check the same columns as the
+  Windows size, the height grown by the stretch, nothing drawn past the square, and no
+  loss of sharpness; the badge tests run at both sizes.
 
 ## 4. Context menu (FR-100)
 
@@ -109,7 +118,7 @@ it (`bv-shell/src/popup.rs`). Values compared with the system flyouts.
 ## 7. Gallery
 
 `cargo run -p bv-ui-kit --example gallery -- <folder>` renders the tray icons (every
-scaling, both taskbar colours, both styles), an icon-font sheet and the menu (both modes,
+scaling, both taskbar colours, both styles, both sizes), an icon-font sheet and the menu (both modes,
 100/150/225 %) to PNG files through the real backend, for visual checks.
 
 ## 8. Flyout layout

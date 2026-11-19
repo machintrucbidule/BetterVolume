@@ -332,7 +332,7 @@ impl Shell {
             return resource;
         }
         let theme = self.theme();
-        let icon = TrayIcon { level: Some(VolumeLevel::High), badge: None };
+        let icon = TrayIcon { level: Some(VolumeLevel::High), badge: None, large: false };
         let mut icons = Vec::new();
         for (kind, pixels) in [(ICON_SMALL, 16_u32), (ICON_BIG, 32)] {
             let drawn = self.with_image_graphics(|graphics| {

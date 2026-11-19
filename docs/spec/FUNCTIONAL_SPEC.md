@@ -177,10 +177,12 @@ Wording: **must** = required for v1.
   default).
 - **FR-081** Volume bubble of the wheel and middle click (FR-017): on/off (default on).
 - **FR-082** Flyout height: "Whole screen height" (default) or "Fits the content" (FR-023).
-- **FR-083** Tray icon size: "Same as Windows" (default) or "Large": the icon is drawn
-  bigger inside the notification-area slot, filling it like the other icons there
-  (network, updates), in both icon styles (FR-011). The exact size is validated on
-  renderings at every Windows scaling.
+- **FR-083** Tray icon size: "Same as Windows" (default) or "Large", in both icon styles
+  (FR-011), applied at once. The Windows volume glyph already spans the whole width of
+  the square Windows gives a notification-area icon (the loudest step touches both
+  sides) and Windows shows a larger picture scaled down, so "Large" grows in height
+  only: the same drawing stretched vertically about its middle until the loudest step
+  fills the square (DESIGN_SYSTEM §3), strokes and widths unchanged, nothing cut.
 
 ### 5.2 Devices
 - **FR-085** Two lists (outputs; inputs when microphone management is on), each row: drag

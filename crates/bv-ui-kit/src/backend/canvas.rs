@@ -5,9 +5,10 @@ use windows::Win32::Graphics::Direct2D::Common::{
 };
 use windows::Win32::Graphics::Direct2D::{
     ID2D1Factory1, ID2D1RenderTarget, ID2D1SolidColorBrush, D2D1_ANTIALIAS_MODE_ALIASED,
-    D2D1_DRAW_TEXT_OPTIONS_CLIP, D2D1_DRAW_TEXT_OPTIONS_NONE, D2D1_ELLIPSE,
-    D2D1_FEATURE_LEVEL_DEFAULT, D2D1_RENDER_TARGET_PROPERTIES, D2D1_RENDER_TARGET_TYPE_SOFTWARE,
-    D2D1_RENDER_TARGET_USAGE_NONE, D2D1_ROUNDED_RECT, D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE,
+    D2D1_DRAW_TEXT_OPTIONS_CLIP, D2D1_DRAW_TEXT_OPTIONS_NONE, D2D1_DRAW_TEXT_OPTIONS_NO_SNAP,
+    D2D1_ELLIPSE, D2D1_FEATURE_LEVEL_DEFAULT, D2D1_RENDER_TARGET_PROPERTIES,
+    D2D1_RENDER_TARGET_TYPE_SOFTWARE, D2D1_RENDER_TARGET_USAGE_NONE, D2D1_ROUNDED_RECT,
+    D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE,
 };
 use windows::Win32::Graphics::DirectWrite::{
     DWRITE_MEASURING_MODE_NATURAL, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_TEXT_ALIGNMENT_LEADING,
@@ -15,7 +16,7 @@ use windows::Win32::Graphics::DirectWrite::{
 };
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
 use windows::Win32::Graphics::Imaging::IWICBitmap;
-use windows_numerics::Vector2;
+use windows_numerics::{Matrix3x2, Vector2};
 
 use super::{Graphics, GraphicsError};
 use crate::path::Path;
@@ -50,6 +51,8 @@ pub struct Canvas<'a> {
     brush: ID2D1SolidColorBrush,
     text_scale: f32,
     error: Option<GraphicsError>,
+    /// Inside a vertical stretch: icon glyphs are placed exactly, not snapped to pixels.
+    exact: bool,
 }
 
 impl Canvas<'_> {
@@ -83,6 +86,55 @@ impl Canvas<'_> {
         draw(self);
         // SAFETY: pops the clip pushed above (draw cannot pop it: no such method).
         unsafe { self.target.PopAxisAlignedClip() };
+    }
+
+    /// Runs `draw` with everything stretched vertically by `factor` about the horizontal
+    /// line `y = centre` (DIPs); widths are unchanged. Text is drawn there without grid
+    /// fitting: its outlines keep their exact stretched geometry (grid fitting would move
+    /// their vertical extremes by up to half a pixel, past the edge of a drawing that fills
+    /// its height).
+    pub fn stretched_vertically(&mut self, factor: f32, centre: f32, draw: impl FnOnce(&mut Self)) {
+        // SAFETY: plain getter; an error means "no parameters set" (the default ones).
+        let previous = unsafe { self.target.GetTextRenderingParams() }.ok();
+        let exact = self.graphics.ungridded_text_params();
+        if let Some(params) = &exact {
+            // SAFETY: plain setter inside BeginDraw/EndDraw; restored below.
+            unsafe { self.target.SetTextRenderingParams(params) };
+        }
+        let was_exact = std::mem::replace(&mut self.exact, true);
+        self.vertically(factor, centre * (1.0 - factor), draw);
+        self.exact = was_exact;
+        if exact.is_some() {
+            // SAFETY: as above.
+            unsafe { self.target.SetTextRenderingParams(previous.as_ref()) };
+        }
+    }
+
+    /// Runs `draw` moved down by `dy` DIPs (tests: room around a drawing to see that
+    /// nothing of it is cut).
+    #[cfg(test)]
+    pub(crate) fn shifted_down(&mut self, dy: f32, draw: impl FnOnce(&mut Self)) {
+        self.vertically(1.0, dy, draw);
+    }
+
+    /// Runs `draw` with `y' = factor·y + shift` applied before the current transform.
+    fn vertically(&mut self, factor: f32, shift: f32, draw: impl FnOnce(&mut Self)) {
+        let mut current = Matrix3x2::default();
+        // SAFETY: plain call inside BeginDraw/EndDraw with a valid out-pointer.
+        unsafe { self.target.GetTransform(&mut current) };
+        let changed = Matrix3x2 {
+            M21: factor * current.M21,
+            M22: factor * current.M22,
+            M31: shift * current.M21 + current.M31,
+            M32: shift * current.M22 + current.M32,
+            ..current
+        };
+        // SAFETY: plain calls inside BeginDraw/EndDraw; the transform is restored below
+        // (draw cannot change it: no such method).
+        unsafe { self.target.SetTransform(&changed) };
+        draw(self);
+        // SAFETY: as above.
+        unsafe { self.target.SetTransform(&current) };
     }
 
     /// Fills a rectangle.
@@ -203,7 +255,11 @@ impl Canvas<'_> {
                     &format,
                     &rect(r),
                     &brush,
-                    D2D1_DRAW_TEXT_OPTIONS_NONE,
+                    if self.exact {
+                        D2D1_DRAW_TEXT_OPTIONS_NO_SNAP
+                    } else {
+                        D2D1_DRAW_TEXT_OPTIONS_NONE
+                    },
                     DWRITE_MEASURING_MODE_NATURAL,
                 )
             };
@@ -327,7 +383,7 @@ pub(crate) fn draw(
         target.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
         target.BeginDraw();
     }
-    let mut canvas = Canvas { target, graphics, brush, text_scale, error: None };
+    let mut canvas = Canvas { target, graphics, brush, text_scale, error: None, exact: false };
     paint(&mut canvas);
     let error = canvas.error.take();
     drop(canvas);

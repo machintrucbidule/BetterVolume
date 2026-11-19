@@ -70,6 +70,8 @@ pub enum Icon {
     Notification,
     /// Full screen: the flyout height setting.
     PanelHeight,
+    /// Magnifier with a plus: the tray icon size.
+    IconSize,
     /// House: the Home Assistant page.
     Home,
     /// Globe: a server address.
@@ -149,6 +151,7 @@ impl Icon {
             Icon::Delete => 0xE74D,
             Icon::Notification => 0xE7E7,
             Icon::PanelHeight => 0xE740,
+            Icon::IconSize => 0xE8A3,
             Icon::Home => 0xE80F,
             Icon::Globe => 0xE774,
             Icon::Ethernet => 0xE839,
@@ -239,6 +242,7 @@ mod tests {
             Icon::Delete,
             Icon::Notification,
             Icon::PanelHeight,
+            Icon::IconSize,
             Icon::Home,
             Icon::Globe,
             Icon::Ethernet,

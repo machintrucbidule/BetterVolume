@@ -40,9 +40,11 @@ use windows::Win32::Graphics::Direct3D11::{
 };
 use windows::Win32::Graphics::DirectComposition::{DCompositionCreateDevice, IDCompositionDevice};
 use windows::Win32::Graphics::DirectWrite::{
-    DWriteCreateFactory, IDWriteFactory, IDWriteTextFormat, DWRITE_FACTORY_TYPE_SHARED,
+    DWriteCreateFactory, IDWriteFactory, IDWriteFactory2, IDWriteRenderingParams,
+    IDWriteRenderingParams1, IDWriteTextFormat, DWRITE_FACTORY_TYPE_SHARED,
     DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT,
-    DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_TEXT_METRICS,
+    DWRITE_GRID_FIT_MODE_DISABLED, DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
+    DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_TEXT_METRICS,
     DWRITE_WORD_WRAPPING_NO_WRAP,
 };
 use windows::Win32::Graphics::Dxgi::IDXGIDevice;
@@ -247,6 +249,32 @@ impl Graphics {
         text_scale: f32,
     ) -> Result<IDWriteTextFormat, GraphicsError> {
         self.format(FormatKey { icon: false, size: style.size * text_scale, weight: style.weight })
+    }
+
+    /// The system's text rendering parameters with grid fitting turned off (see
+    /// [`Canvas::stretched_vertically`](canvas::Canvas::stretched_vertically)). `None` when
+    /// DirectWrite cannot make them: text is then drawn with the default ones.
+    pub(crate) fn ungridded_text_params(&self) -> Option<IDWriteRenderingParams> {
+        let factory: IDWriteFactory2 = self.dwrite.cast().ok()?;
+        // SAFETY: plain calls on valid factories and parameters.
+        unsafe {
+            let system = self.dwrite.CreateRenderingParams().ok()?;
+            let grayscale_contrast = system
+                .cast::<IDWriteRenderingParams1>()
+                .map_or(system.GetEnhancedContrast(), |p| p.GetGrayscaleEnhancedContrast());
+            let params = factory
+                .CreateCustomRenderingParams(
+                    system.GetGamma(),
+                    system.GetEnhancedContrast(),
+                    grayscale_contrast,
+                    system.GetClearTypeLevel(),
+                    system.GetPixelGeometry(),
+                    DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC,
+                    DWRITE_GRID_FIT_MODE_DISABLED,
+                )
+                .ok()?;
+            params.cast().ok()
+        }
     }
 
     /// The icon-font format for glyphs of `size` DIPs, centred in their box.

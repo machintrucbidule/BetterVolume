@@ -13,7 +13,9 @@ use std::hash::{Hash, Hasher};
 use bv_audio::{AudioEngine, Flow};
 use bv_core::devices;
 use bv_core::i18n::{Language, Msg};
-use bv_core::settings::{FlyoutHeight, SwitchScope, TrayIconStyle, WHEEL_STEP_MAX, WHEEL_STEP_MIN};
+use bv_core::settings::{
+    FlyoutHeight, SwitchScope, TrayIconSize, TrayIconStyle, WHEEL_STEP_MAX, WHEEL_STEP_MIN,
+};
 use bv_ui_kit::controls::device_icon::DeviceIcon;
 use bv_ui_kit::controls::settings::{
     Block, Card, CardControl, DeviceRow, DeviceTexts, NavEntry, PageKey, SettingKey,
@@ -63,6 +65,7 @@ enum Setting {
     VolumeBubble,
     FlyoutHeight,
     TrayStyle,
+    TraySize,
     HideIcon,
     HideIconNotice,
     Version,
@@ -72,7 +75,7 @@ enum Setting {
 }
 
 impl Setting {
-    const ALL: [Setting; 15] = [
+    const ALL: [Setting; 16] = [
         Setting::Autostart,
         Setting::Language,
         Setting::Microphones,
@@ -82,6 +85,7 @@ impl Setting {
         Setting::VolumeBubble,
         Setting::FlyoutHeight,
         Setting::TrayStyle,
+        Setting::TraySize,
         Setting::HideIcon,
         Setting::HideIconNotice,
         Setting::Version,
@@ -108,6 +112,11 @@ const SCOPES: [(SwitchScope, Msg); 3] = [
 const TRAY_STYLES: [(TrayIconStyle, Msg); 2] = [
     (TrayIconStyle::SameAsWindows, Msg::SettingsTraySame),
     (TrayIconStyle::WithDeviceBadge, Msg::SettingsTrayBadge),
+];
+
+const TRAY_SIZES: [(TrayIconSize, Msg); 2] = [
+    (TrayIconSize::SameAsWindows, Msg::SettingsTraySizeSame),
+    (TrayIconSize::Large, Msg::SettingsTraySizeLarge),
 ];
 
 const FLYOUT_HEIGHTS: [(FlyoutHeight, Msg); 2] = [
@@ -366,6 +375,10 @@ impl<E: AudioEngine> App<E> {
             options: TRAY_STYLES.iter().map(|(_, m)| text(*m)).collect(),
             selected: TRAY_STYLES.iter().position(|(s, _)| *s == g.tray_icon_style).unwrap_or(0),
         };
+        let size = CardControl::Choice {
+            options: TRAY_SIZES.iter().map(|(_, m)| text(*m)).collect(),
+            selected: TRAY_SIZES.iter().position(|(s, _)| *s == g.tray_icon_size).unwrap_or(0),
+        };
         let height = CardControl::Choice {
             options: FLYOUT_HEIGHTS.iter().map(|(_, m)| text(*m)).collect(),
             selected: FLYOUT_HEIGHTS.iter().position(|(h, _)| *h == g.flyout_height).unwrap_or(0),
@@ -433,6 +446,13 @@ impl<E: AudioEngine> App<E> {
                 Msg::SettingsTrayStyle,
                 Some(Msg::SettingsTrayStyleHelp),
                 style,
+            ),
+            self.card(
+                Setting::TraySize,
+                Icon::IconSize,
+                Msg::SettingsTraySize,
+                Some(Msg::SettingsTraySizeHelp),
+                size,
             ),
             // FR-079: the risks are always under the switch.
             Block::Card(Card {
@@ -554,6 +574,11 @@ impl<E: AudioEngine> App<E> {
                 Some(Setting::TrayStyle) => {
                     if let Some((style, _)) = TRAY_STYLES.get(index) {
                         self.general_mut().tray_icon_style = *style;
+                    }
+                }
+                Some(Setting::TraySize) => {
+                    if let Some((size, _)) = TRAY_SIZES.get(index) {
+                        self.general_mut().tray_icon_size = *size;
                     }
                 }
                 Some(Setting::FlyoutHeight) => {
@@ -748,8 +773,20 @@ mod tests {
         assert_eq!(options[1], "2%");
         // The update switches are on the About page; hiding the Windows volume icon is
         // the last card.
-        assert_eq!(content.cards().count(), 10);
+        assert_eq!(content.cards().count(), 11);
         assert_eq!(content.cards().last().map(|c| c.key), Some(Setting::HideIcon.key()));
+        // The icon size (FR-083) follows the icon style, "Same as Windows" by default.
+        let keys: Vec<_> = content.cards().map(|c| c.key).collect();
+        let style = keys.iter().position(|k| *k == Setting::TrayStyle.key());
+        assert_eq!(keys.get(style.unwrap_or(0) + 1), Some(&Setting::TraySize.key()));
+        let CardControl::Choice { options, selected } = &card(&content, Setting::TraySize).control
+        else {
+            panic!("icon size is a choice")
+        };
+        assert_eq!(
+            (options.clone(), *selected),
+            (vec!["Same as Windows".into(), "Large".into()], 0)
+        );
     }
 
     #[test]
@@ -767,6 +804,10 @@ mod tests {
         assert_eq!(app.settings().general.switch_scope, SwitchScope::CallsOnly);
         app.settings_action(SettingsAction::Choose(Setting::TrayStyle.key(), 1));
         assert_eq!(app.settings().general.tray_icon_style, TrayIconStyle::WithDeviceBadge);
+        assert!(!app.tray_icon().large);
+        app.settings_action(SettingsAction::Choose(Setting::TraySize.key(), 1));
+        assert_eq!(app.settings().general.tray_icon_size, TrayIconSize::Large);
+        assert!(app.tray_icon().large, "applied at once (FR-083)");
         app.settings_action(SettingsAction::Toggle(Setting::Microphones.key(), false));
         assert!(!app.settings().general.microphone_enabled);
         assert!(app.flyout_content().tabs.is_none(), "the flyout loses its tabs (FR-076)");

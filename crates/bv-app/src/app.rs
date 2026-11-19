@@ -11,7 +11,7 @@
 use bv_audio::{AudioEngine, AudioError, Changes, Endpoint, Flow, Role};
 use bv_core::audio::FormFactor;
 use bv_core::i18n::{Language, Msg};
-use bv_core::settings::{Settings, TrayIconStyle, WindowPlacement};
+use bv_core::settings::{Settings, TrayIconSize, TrayIconStyle, WindowPlacement};
 use bv_core::text::ellipsize;
 use bv_core::{devices, volume};
 use bv_ui_kit::controls::tray::{DeviceType, TrayIcon};
@@ -178,11 +178,12 @@ impl<E: AudioEngine> App<E> {
         self.engine.endpoint(Flow::Output).cloned()
     }
 
-    /// What the tray icon shows (FR-010, FR-011): the volume step of the current output
-    /// and, in the "with device badge" style, its type.
+    /// What the tray icon shows (FR-010, FR-011, FR-083): the volume step of the current
+    /// output, in the "with device badge" style its type, and the chosen size.
     pub fn tray_icon(&self) -> TrayIcon {
+        let large = self.settings.general.tray_icon_size == TrayIconSize::Large;
         let Some(current) = self.engine.default_device(Flow::Output, Role::Media) else {
-            return TrayIcon { level: None, badge: None };
+            return TrayIcon { level: None, badge: None, large };
         };
         // A device without volume control shows the full speaker, like Windows.
         let level = match self.engine.endpoint(Flow::Output) {
@@ -202,7 +203,7 @@ impl<E: AudioEngine> App<E> {
                 })
             }
         };
-        TrayIcon { level: Some(level), badge }
+        TrayIcon { level: Some(level), badge, large }
     }
 
     /// The tray tooltip (FR-012): `<display name>: <volume>%`, `<display name>: muted`, or
@@ -524,10 +525,16 @@ mod tests {
     #[test]
     fn tray_icon_follows_the_level_and_mute() {
         let mut app = english(speakers());
-        assert_eq!(app.tray_icon(), TrayIcon { level: Some(VolumeLevel::Medium), badge: None });
+        assert_eq!(
+            app.tray_icon(),
+            TrayIcon { level: Some(VolumeLevel::Medium), badge: None, large: false }
+        );
         app.toggle_output_mute();
         assert_eq!(app.tray_icon().level, Some(VolumeLevel::Muted));
-        assert_eq!(english(FakeEngine::new()).tray_icon(), TrayIcon { level: None, badge: None });
+        assert_eq!(
+            english(FakeEngine::new()).tray_icon(),
+            TrayIcon { level: None, badge: None, large: false }
+        );
     }
 
     #[test]
@@ -542,7 +549,11 @@ mod tests {
         let app = App::new(engine, settings, Language::ENGLISH);
         assert_eq!(
             app.tray_icon(),
-            TrayIcon { level: Some(VolumeLevel::High), badge: Some(DeviceType::Headphones) }
+            TrayIcon {
+                level: Some(VolumeLevel::High),
+                badge: Some(DeviceType::Headphones),
+                large: false
+            }
         );
         // Same device, default style: no badge.
         let app = english(app.engine);

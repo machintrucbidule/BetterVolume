@@ -40,7 +40,8 @@ fn theme(mode: ThemeMode) -> Theme {
     Theme::shell(&ThemeInputs { system_mode: mode, ..ThemeInputs::default() })
 }
 
-/// Tray icons at the small-icon sizes of each Windows scaling, on a taskbar background.
+/// Tray icons at the small-icon sizes of each Windows scaling, on a taskbar background,
+/// at both sizes (`-large`: FR-083).
 fn tray_icons(gfx: &Graphics, out: &Path) {
     let levels = [
         None,
@@ -55,7 +56,10 @@ fn tray_icons(gfx: &Graphics, out: &Path) {
         (ThemeMode::Light, "light", Color::rgb(0xEEEEEE)),
     ] {
         let theme = theme(mode);
-        for pixels in [16u32, 20, 24, 28, 32, 36] {
+        for (pixels, large) in [16u32, 20, 24, 28, 32, 36, 40, 48]
+            .into_iter()
+            .flat_map(|pixels| [(pixels, false), (pixels, true)])
+        {
             let cell = pixels + pixels / 2;
             let width = cell * levels.len() as u32;
             let mut sheet = Pixels {
@@ -66,12 +70,13 @@ fn tray_icons(gfx: &Graphics, out: &Path) {
             for (i, level) in levels.iter().enumerate() {
                 let icon = gfx
                     .rasterize(pixels, pixels, tray::scale_for(pixels), 1.0, |c| {
-                        tray::paint(c, &TrayIcon { level: *level, badge: None }, &theme)
+                        tray::paint(c, &TrayIcon { level: *level, badge: None, large }, &theme)
                     })
                     .expect("icon");
                 blend(&mut sheet, &icon, i as u32 * cell + pixels / 4, pixels / 4);
             }
-            write_png(&out.join(format!("tray-{name}-{pixels}px.png")), &sheet);
+            let size = if large { "-large" } else { "" };
+            write_png(&out.join(format!("tray-{name}-{pixels}px{size}.png")), &sheet);
         }
     }
 }
@@ -256,7 +261,8 @@ fn badges(gfx: &Graphics, out: &Path) {
         (DeviceType::Speakers, VolumeLevel::Zero),
         (DeviceType::Headphones, VolumeLevel::Muted),
     ];
-    let columns = [false, true];
+    // Without and with the badge, at the Windows size then large (FR-083).
+    let columns = [(false, false), (true, false), (false, true), (true, true)];
     for (mode, name, background) in [
         (ThemeMode::Dark, "dark", Color::rgb(0x1C1C1C)),
         (ThemeMode::Light, "light", Color::rgb(0xEEEEEE)),
@@ -271,8 +277,9 @@ fn badges(gfx: &Graphics, out: &Path) {
                 data: [background_bytes(background)].repeat((width * height) as usize).concat(),
             };
             for (r, (device, level)) in rows.iter().enumerate() {
-                for (c, badge) in columns.iter().enumerate() {
-                    let icon = TrayIcon { level: Some(*level), badge: badge.then_some(*device) };
+                for (c, &(badge, large)) in columns.iter().enumerate() {
+                    let icon =
+                        TrayIcon { level: Some(*level), badge: badge.then_some(*device), large };
                     let image = gfx
                         .rasterize(pixels, pixels, tray::scale_for(pixels), 1.0, |canvas| {
                             tray::paint(canvas, &icon, &theme)

@@ -9,8 +9,8 @@
 //! [`Loaded::warnings`] (English, no value quoted: the log carries no personal data).
 
 use super::{
-    classify_version, FlyoutHeight, General, HomeAssistant, Settings, SwitchScope, TrayIconStyle,
-    VersionStatus, WindowPlacement,
+    classify_version, FlyoutHeight, General, HomeAssistant, Settings, SwitchScope, TrayIconSize,
+    TrayIconStyle, VersionStatus, WindowPlacement,
 };
 use crate::devices::KnownDevice;
 
@@ -93,6 +93,9 @@ const TRAY_STYLES: [(TrayIconStyle, &str); 2] = [
     (TrayIconStyle::WithDeviceBadge, "with-device-badge"),
 ];
 
+const TRAY_SIZES: [(TrayIconSize, &str); 2] =
+    [(TrayIconSize::SameAsWindows, "same-as-windows"), (TrayIconSize::Large, "large")];
+
 const FLYOUT_HEIGHTS: [(FlyoutHeight, &str); 2] =
     [(FlyoutHeight::Full, "full"), (FlyoutHeight::Content, "content")];
 
@@ -122,6 +125,8 @@ pub fn write(settings: &Settings) -> String {
     line(&mut out, "volume_bubble", &Value::Bool(g.volume_bubble));
     let style = TRAY_STYLES.iter().find(|(s, _)| *s == g.tray_icon_style).map_or("", |(_, n)| n);
     line(&mut out, "tray_icon_style", &Value::Text(style.into()));
+    let size = TRAY_SIZES.iter().find(|(s, _)| *s == g.tray_icon_size).map_or("", |(_, n)| n);
+    line(&mut out, "tray_icon_size", &Value::Text(size.into()));
     let height = FLYOUT_HEIGHTS.iter().find(|(h, _)| *h == g.flyout_height).map_or("", |(_, n)| n);
     line(&mut out, "flyout_height", &Value::Text(height.into()));
     line(&mut out, "hide_windows_volume_icon", &Value::Bool(g.hide_windows_volume_icon));
@@ -324,6 +329,7 @@ fn general(g: &mut General, entry: &Entry) -> Result<(), String> {
         "switch_notification" => g.switch_notification = boolean(v)?,
         "volume_bubble" => g.volume_bubble = boolean(v)?,
         "tray_icon_style" => g.tray_icon_style = named(v, &TRAY_STYLES)?,
+        "tray_icon_size" => g.tray_icon_size = named(v, &TRAY_SIZES)?,
         "flyout_height" => g.flyout_height = named(v, &FLYOUT_HEIGHTS)?,
         "hide_windows_volume_icon" => g.hide_windows_volume_icon = boolean(v)?,
         "check_updates" => g.check_updates = boolean(v)?,
@@ -614,6 +620,7 @@ mod tests {
         settings.general.switch_notification = false;
         settings.general.volume_bubble = false;
         settings.general.tray_icon_style = TrayIconStyle::WithDeviceBadge;
+        settings.general.tray_icon_size = TrayIconSize::Large;
         settings.general.flyout_height = FlyoutHeight::Content;
         settings.general.apps_section_expanded = false;
         settings.general.first_run_done = true;
