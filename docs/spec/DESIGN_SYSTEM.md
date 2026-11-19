@@ -86,9 +86,12 @@ subtle fill, disabled = disabled text colour. Corner radius 8 and outline come f
 Windows frame. Icons: sound settings `E767`, mixer `F4C3`, classic panel `E7F5`, settings
 `E713`, quit `E711`.
 
-Placement: above a bottom taskbar (below a top one, beside a vertical one), ending at the
-pointer when it fits on that side, kept inside the usable area of the monitor under the
-pointer (auto-hidden taskbar cut out).
+Placement: above a bottom taskbar (below a top one, beside a vertical one), centred on the
+tray icon along the taskbar, like the menus of the Windows 11 tray icons (an icon in the
+hidden-icons panel: centred next to it, on the side away from the taskbar); opened
+anywhere else, ending at the pointer when it fits on that side. Always kept inside the
+usable area of the monitor under the pointer (auto-hidden taskbar cut out). The plain
+Windows menu used when drawing fails keeps the pointer placement.
 
 ## 5. Flyout frame (FR-020, FR-021)
 

@@ -216,7 +216,7 @@ impl Shell {
     }
 
     /// The icon's rectangle on screen, if the taskbar shows it.
-    fn icon_rect(&self) -> Option<RECT> {
+    pub(crate) fn icon_rect(&self) -> Option<RECT> {
         let id = NOTIFYICONIDENTIFIER {
             cbSize: size_of::<NOTIFYICONIDENTIFIER>() as u32,
             hWnd: self.window,

@@ -25,7 +25,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::host::Shell;
-use crate::placement::{menu_origin, touches_taskbar, Edge};
+use crate::placement::{icon_menu_origin, menu_origin, touches_taskbar, Edge, ScreenRect};
 use crate::popup::{Popup, Unfocused};
 
 /// One line of a context menu, with the value returned when it is chosen.
@@ -174,7 +174,17 @@ impl Shell {
             Some(Session { menu, theme, outcome: None, tracking_leave: false });
 
         let gap = (TASKBAR_GAP * layout.scale).round() as i32;
-        let origin = menu_origin((x, y), size, &layout.area, layout.edge, gap);
+        // Opened on the tray icon (pointer or keyboard): centred on the icon, like the
+        // menus of the Windows tray icons; anywhere else, at the point.
+        let icon = self
+            .icon_rect()
+            .map(|r| ScreenRect::new(r.left, r.top, r.right, r.bottom))
+            // A little tolerance: the keyboard anchor may sit on the icon's edge.
+            .filter(|r| x >= r.left - 2 && x <= r.right + 2 && y >= r.top - 2 && y <= r.bottom + 2);
+        let origin = match icon {
+            Some(icon) => icon_menu_origin(&icon, size, &layout.area, layout.edge, gap),
+            None => menu_origin((x, y), size, &layout.area, layout.edge, gap),
+        };
         // A menu opened higher than the taskbar (from the hidden-icons panel) appears in
         // place: rising from the taskbar would make it cross half the screen.
         let rises = touches_taskbar(origin, size, &layout.area, layout.edge, gap)

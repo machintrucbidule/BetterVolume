@@ -126,6 +126,42 @@ pub(crate) fn menu_origin(
     (clamp(x, area.left, area.right - w), clamp(y, area.top, area.bottom - h))
 }
 
+/// Top-left corner of the context menu of the tray icon at `icon`: centred on the icon
+/// along the taskbar, like the menus of the Windows 11 tray icons, always kept inside the
+/// usable area. Across the taskbar: for an icon on the taskbar, `gap` pixels from it; for
+/// an icon in the hidden-icons panel (inside the area), next to the icon on the side away
+/// from the taskbar.
+pub(crate) fn icon_menu_origin(
+    icon: &ScreenRect,
+    size: (i32, i32),
+    area: &ScreenRect,
+    edge: Edge,
+    gap: i32,
+) -> (i32, i32) {
+    let (w, h) = size;
+    let centre_x = (icon.left + icon.right) / 2 - w / 2;
+    let centre_y = (icon.top + icon.bottom) / 2 - h / 2;
+    let (x, y) = match edge {
+        Edge::Bottom => {
+            let on_taskbar = icon.bottom > area.bottom;
+            (centre_x, if on_taskbar { area.bottom - gap } else { icon.top - gap } - h)
+        }
+        Edge::Top => {
+            let on_taskbar = icon.top < area.top;
+            (centre_x, if on_taskbar { area.top + gap } else { icon.bottom + gap })
+        }
+        Edge::Left => {
+            let on_taskbar = icon.left < area.left;
+            (if on_taskbar { area.left + gap } else { icon.right + gap }, centre_y)
+        }
+        Edge::Right => {
+            let on_taskbar = icon.right > area.right;
+            (if on_taskbar { area.right - gap } else { icon.left - gap } - w, centre_y)
+        }
+    };
+    (clamp(x, area.left, area.right - w), clamp(y, area.top, area.bottom - h))
+}
+
 /// Top-left corner of the bubble: at the bottom centre of the usable area, `gap` pixels
 /// above its bottom, where the Windows 11 volume indicator appears whatever the taskbar
 /// position (above a bottom taskbar, the gap from the monitor's bottom edge otherwise).
@@ -304,6 +340,31 @@ mod tests {
         assert_eq!(menu_origin((30, 1000), (260, 230), &left, Edge::Left, 8), (70, 770));
         let right = ScreenRect::new(0, 0, 1858, 1080);
         assert_eq!(menu_origin((1890, 100), (260, 230), &right, Edge::Right, 8), (1590, 100));
+    }
+
+    #[test]
+    fn the_icon_menu_is_centred_on_the_icon() {
+        // Bottom taskbar: centred above the icon, 8 px above the taskbar.
+        let area = work_above_bar();
+        let icon = ScreenRect::new(1700, 1036, 1724, 1076);
+        assert_eq!(icon_menu_origin(&icon, (260, 230), &area, Edge::Bottom, 8), (1582, 794));
+        // Near the screen edge: kept inside, as far as it goes.
+        let corner = ScreenRect::new(1890, 1036, 1914, 1076);
+        assert_eq!(icon_menu_origin(&corner, (260, 230), &area, Edge::Bottom, 8), (1660, 794));
+        // Top taskbar: centred below the icon.
+        let top = ScreenRect::new(0, 48, 1920, 1080);
+        let icon = ScreenRect::new(1700, 4, 1724, 44);
+        assert_eq!(icon_menu_origin(&icon, (260, 230), &top, Edge::Top, 8), (1582, 56));
+        // Vertical taskbars: centred beside the icon.
+        let left = ScreenRect::new(62, 0, 1920, 1080);
+        let icon = ScreenRect::new(19, 900, 43, 924);
+        assert_eq!(icon_menu_origin(&icon, (260, 230), &left, Edge::Left, 8), (70, 797));
+        let right = ScreenRect::new(0, 0, 1858, 1080);
+        let icon = ScreenRect::new(1877, 900, 1901, 924);
+        assert_eq!(icon_menu_origin(&icon, (260, 230), &right, Edge::Right, 8), (1590, 797));
+        // An icon in the hidden-icons panel (inside the area): centred above it.
+        let icon = ScreenRect::new(1600, 960, 1624, 984);
+        assert_eq!(icon_menu_origin(&icon, (260, 230), &area, Edge::Bottom, 8), (1482, 722));
     }
 
     #[test]
