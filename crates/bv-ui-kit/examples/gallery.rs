@@ -15,7 +15,7 @@ use bv_ui_kit::controls::bubble::{self, BubbleContent};
 use bv_ui_kit::controls::device_icon::{self, DeviceIcon};
 use bv_ui_kit::controls::flyout;
 use bv_ui_kit::controls::menu::{Menu, MenuEntry};
-use bv_ui_kit::controls::tray::{self, DeviceType, TrayIcon};
+use bv_ui_kit::controls::tray::{self, DeviceType, TrayIcon, TrayLook};
 use bv_ui_kit::icons::{Icon, VolumeLevel};
 use bv_ui_kit::theme::{Material, Theme, ThemeInputs, ThemeMode};
 use bv_ui_kit::tokens::typography::{BODY, CAPTION};
@@ -41,7 +41,7 @@ fn theme(mode: ThemeMode) -> Theme {
 }
 
 /// Tray icons at the small-icon sizes of each Windows scaling, on a taskbar background,
-/// at both sizes (`-large`: FR-083).
+/// at both sizes (`-large`: FR-083) and in both looks (`-bv`: FR-084).
 fn tray_icons(gfx: &Graphics, out: &Path) {
     let levels = [
         None,
@@ -56,9 +56,16 @@ fn tray_icons(gfx: &Graphics, out: &Path) {
         (ThemeMode::Light, "light", Color::rgb(0xEEEEEE)),
     ] {
         let theme = theme(mode);
-        for (pixels, large) in [16u32, 20, 24, 28, 32, 36, 40, 48]
-            .into_iter()
-            .flat_map(|pixels| [(pixels, false), (pixels, true)])
+        for (pixels, large, look) in
+            [16u32, 20, 24, 28, 32, 36, 40, 48].into_iter().flat_map(|pixels| {
+                [
+                    (false, TrayLook::Windows),
+                    (true, TrayLook::Windows),
+                    (false, TrayLook::BetterVolume),
+                    (true, TrayLook::BetterVolume),
+                ]
+                .map(|(large, look)| (pixels, large, look))
+            })
         {
             let cell = pixels + pixels / 2;
             let width = cell * levels.len() as u32;
@@ -70,13 +77,18 @@ fn tray_icons(gfx: &Graphics, out: &Path) {
             for (i, level) in levels.iter().enumerate() {
                 let icon = gfx
                     .rasterize(pixels, pixels, tray::scale_for(pixels), 1.0, |c| {
-                        tray::paint(c, &TrayIcon { level: *level, badge: None, large }, &theme)
+                        tray::paint(
+                            c,
+                            &TrayIcon { level: *level, badge: None, large, look },
+                            &theme,
+                        )
                     })
                     .expect("icon");
                 blend(&mut sheet, &icon, i as u32 * cell + pixels / 4, pixels / 4);
             }
             let size = if large { "-large" } else { "" };
-            write_png(&out.join(format!("tray-{name}-{pixels}px{size}.png")), &sheet);
+            let look = if look == TrayLook::BetterVolume { "-bv" } else { "" };
+            write_png(&out.join(format!("tray-{name}-{pixels}px{size}{look}.png")), &sheet);
         }
     }
 }
@@ -261,8 +273,14 @@ fn badges(gfx: &Graphics, out: &Path) {
         (DeviceType::Speakers, VolumeLevel::Zero),
         (DeviceType::Headphones, VolumeLevel::Muted),
     ];
-    // Without and with the badge, at the Windows size then large (FR-083).
-    let columns = [(false, false), (true, false), (false, true), (true, true)];
+    // Without and with the device, at the Windows size then large (FR-083), in the Windows
+    // look then the BetterVolume one (FR-084).
+    let columns = [(false, false), (true, false), (false, true), (true, true)]
+        .into_iter()
+        .flat_map(|(badge, large)| {
+            [TrayLook::Windows, TrayLook::BetterVolume].map(|look| (badge, large, look))
+        })
+        .collect::<Vec<_>>();
     for (mode, name, background) in [
         (ThemeMode::Dark, "dark", Color::rgb(0x1C1C1C)),
         (ThemeMode::Light, "light", Color::rgb(0xEEEEEE)),
@@ -277,9 +295,13 @@ fn badges(gfx: &Graphics, out: &Path) {
                 data: [background_bytes(background)].repeat((width * height) as usize).concat(),
             };
             for (r, (device, level)) in rows.iter().enumerate() {
-                for (c, &(badge, large)) in columns.iter().enumerate() {
-                    let icon =
-                        TrayIcon { level: Some(*level), badge: badge.then_some(*device), large };
+                for (c, &(badge, large, look)) in columns.iter().enumerate() {
+                    let icon = TrayIcon {
+                        level: Some(*level),
+                        badge: badge.then_some(*device),
+                        large,
+                        look,
+                    };
                     let image = gfx
                         .rasterize(pixels, pixels, tray::scale_for(pixels), 1.0, |canvas| {
                             tray::paint(canvas, &icon, &theme)

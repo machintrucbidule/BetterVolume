@@ -87,6 +87,12 @@ impl Rect {
             height: (self.height - 2.0 * dy).max(0.0),
         }
     }
+
+    /// The smallest rectangle holding both.
+    pub fn union(&self, other: Rect) -> Rect {
+        let (x, y) = (self.x.min(other.x), self.y.min(other.y));
+        Rect::new(x, y, self.right().max(other.right()) - x, self.bottom().max(other.bottom()) - y)
+    }
 }
 
 #[cfg(test)]

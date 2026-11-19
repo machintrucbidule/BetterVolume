@@ -143,6 +143,7 @@ $env:BETTERVOLUME_DATA_DIR = $firstRunData
 $first = Start-Process $Exe -PassThru
 $firstOk = $false
 $settingsMs = $null
+$settingsClosedMb = $null
 try {
     $settingsWindow = [IntPtr]::Zero
     $watch = [Diagnostics.Stopwatch]::StartNew()
@@ -162,6 +163,9 @@ try {
         $closeWatch = [Diagnostics.Stopwatch]::StartNew()
         while ([BvMeasure.Native]::IsWindow($settingsWindow) -and $closeWatch.ElapsedMilliseconds -lt 3000) { Start-Sleep -Milliseconds 20 }
         $closed = -not [BvMeasure.Native]::IsWindow($settingsWindow)
+        # Closing it gives back what the graphics objects grew to for it.
+        Start-Sleep -Seconds 2
+        $settingsClosedMb = Get-PrivateWorkingSetMb $first.Id
         [void][BvMeasure.Native]::PostMessageW((Find-AppWindow), $WM_CLOSE, [IntPtr]::Zero, [IntPtr]::Zero)
         $firstExited = $first.WaitForExit(3000)
         $saved = Join-Path $firstRunData 'settings.toml'
@@ -176,6 +180,8 @@ finally {
     if (-not $first.HasExited) { $first.Kill() }
 }
 Add-Row 'First launch opens the settings window and its question, closes it, remembers it' $(if ($firstOk) { "yes ($settingsMs ms to shown)" } else { 'no' }) '' '' $firstOk
+$closedBudget = $budget.settings_closed_private_mb
+Add-Row 'Private RAM 2 s after closing the settings window (MB)' $settingsClosedMb $closedBudget.budget $closedBudget.target (($null -ne $settingsClosedMb) -and ($settingsClosedMb -le $closedBudget.budget))
 
 $env:BETTERVOLUME_DATA_DIR = $runData
 $process = Start-Process $Exe -PassThru

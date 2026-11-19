@@ -11,7 +11,7 @@ outlines, and the pointer. It writes:
 
 - panel.png: the panel in the dark and the light theme, side by side;
 - settings.png: the settings window;
-- tray.png: the tray icon showing each output, dark and light;
+- tray.png: the tray icon in both looks, the speaker then each output, dark and light;
 - bubble.png: the bubble above the taskbar, dark and light;
 - demo.webp: the animated demo.
 
@@ -230,22 +230,27 @@ def settings():
 
 
 def trays():
-    """The tray icon showing each output (device badge, large size): the taskbar corner,
-    dark on the left, light on the right, one row per output."""
-    gap = px(6)
+    """The tray icon at the large size, one row per look (Windows, then BetterVolume):
+    the speaker, then each output's device, on a strip of dark taskbar then of light
+    taskbar (each icon's slot of the taskbar, side by side)."""
+    gap, mode_gap = px(6), px(16)
     cells = {}
     for entry in META["trays"]:
         mode = entry["mode"]
         scene = background(mode).copy()
         taskbar(scene, mode, entry["taskbar"])
-        left = max(0, px(entry["icon"][0]) - px(70))
-        cells[(entry["device"], mode)] = scene.crop((left, H - TASKBAR, W, H))
-    devices = list(dict.fromkeys(e["device"] for e in META["trays"]))
+        centre = px(entry["icon"][0])
+        cells[(entry["look"], entry["picture"], mode)] = scene.crop(
+            (centre - px(20), H - TASKBAR, centre + px(20), H))
+    looks = list(dict.fromkeys(e["look"] for e in META["trays"]))
+    pictures = list(dict.fromkeys(e["picture"] for e in META["trays"]))
     w, h = next(iter(cells.values())).size
-    sheet = Image.new("RGBA", (w * 2 + gap, h * len(devices) + gap * (len(devices) - 1)), (0, 0, 0, 0))
-    for row, device in enumerate(devices):
+    strip = w * len(pictures)
+    sheet = Image.new("RGBA", (strip * 2 + mode_gap, h * len(looks) + gap * (len(looks) - 1)), (0, 0, 0, 0))
+    for row, look in enumerate(looks):
         for col, mode in enumerate(("dark", "light")):
-            sheet.paste(cells[(device, mode)], (col * (w + gap), row * (h + gap)))
+            for i, picture in enumerate(pictures):
+                sheet.paste(cells[(look, picture, mode)], (col * (strip + mode_gap) + i * w, row * (h + gap)))
     path = os.path.join(DST, "tray.png")
     sheet.save(path, optimize=True)
     print("tray.png", sheet.size, os.path.getsize(path), "bytes")

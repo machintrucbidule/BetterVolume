@@ -365,6 +365,22 @@ pub mod settings {
     pub const PICKER_PADDING: (f32, f32) = (12.0, 4.0);
     /// Size of the icons of the picker.
     pub const PICKER_ICON: f32 = 24.0;
+    /// Picture choices (a card of tiles, like the Start layout choice of Windows 11):
+    /// least tile width, and height of the picture (a strip of the taskbar colour).
+    pub const PICTURE_TILE: (f32, f32) = (76.0, 52.0);
+    /// Size of the tray icon drawn on a tile (twice the taskbar size at 100 %).
+    pub const PICTURE_ICON: f32 = 32.0;
+    /// Padding inside a tile, gap between the picture and the label, corner radius of
+    /// the picture.
+    pub const PICTURE_TILE_INSETS: (f32, f32, f32) = (4.0, 6.0, 4.0);
+    /// Room left and right of a tile's label.
+    pub const PICTURE_LABEL_PADDING: f32 = 6.0;
+    /// Gaps: between two tiles, between two groups side by side, between two rows of
+    /// groups (a narrow window wraps them). Three groups of two tiles fit side by side
+    /// in the window at its default size.
+    pub const PICTURE_GAPS: (f32, f32, f32) = (4.0, 20.0, 16.0);
+    /// Gaps: under the card's text, under a group's label.
+    pub const PICTURE_TEXT_GAPS: (f32, f32) = (16.0, 8.0);
     /// Confirmation flyout: width, padding.
     pub const CONFIRM: (f32, f32) = (320.0, 16.0);
     /// Push buttons: height at 100 % text, horizontal padding, gap between two.

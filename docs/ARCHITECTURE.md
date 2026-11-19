@@ -59,6 +59,7 @@ Measured on the release build, private working set, after 60 s idle:
 |---|---|---|
 | Running, flyout never opened, Home Assistant off | ≤ 5 MB | ≤ 3 MB |
 | Running, flyout used then closed, Home Assistant on | ≤ 12 MB | ≤ 8 MB |
+| Running, settings window opened then closed, Home Assistant off | ≤ 6 MB | ≤ 5 MB |
 | Idle CPU | 0 ms/min (no timers, no polling) | — |
 | Flyout open latency | first ≤ 80 ms, next ≤ 16 ms | — |
 | Executable | ≤ 3 MB | ≤ 1.5 MB |
@@ -66,6 +67,9 @@ Measured on the release build, private working set, after 60 s idle:
 A change that exceeds a budget is not accepted. Numbers are measured by
 `tools/measure.ps1` (run by `tools/check.ps1`), which reads the budget from `tools/budget.json`
 (a mirror of the table above: change both together) and fails when a value is exceeded.
+The settings window figure is read 2 s after the window closed (no 60 s idle): closing it
+drops the shared graphics objects, which had grown to draw it (about 7 MB), and the next
+drawing rebuilds them (the next flyout opening then takes its first-opening time once).
 Idle CPU is judged as "less than one process-clock tick (15.6 ms) over the idle period":
 a single tick already fails.
 

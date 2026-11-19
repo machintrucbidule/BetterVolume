@@ -1,11 +1,12 @@
 //! Painting of the settings window.
 
-use super::content::{Block, CardControl, DeviceRow, RowPicture};
-use super::layout::RowLayout;
+use super::content::{Block, CardControl, DeviceRow, PictureCard, RowPicture};
+use super::layout::{PicturesLayout, RowLayout};
 use super::{Part, SettingsView, Target};
 use crate::backend::{Canvas, TextAlign};
 use crate::controls::device_icon::{self, DeviceIcon};
 use crate::controls::flyout::TextMeasure;
+use crate::controls::tray;
 use crate::icons::Icon;
 use crate::tokens::focus;
 use crate::tokens::settings as t;
@@ -121,6 +122,7 @@ pub(super) fn paint(
         let mut headers = layout.headers.iter();
         let mut texts = layout.texts.iter();
         let mut cards = layout.cards.iter();
+        let mut pictures = layout.pictures.iter();
         for block in &view.content.blocks {
             match block {
                 Block::Text(text) => {
@@ -233,6 +235,11 @@ pub(super) fn paint(
                     }
                 }
                 Block::Notice(notice) => paint_notice(view, canvas, theme, notice, &state),
+                Block::Pictures(card) => {
+                    if let Some(laid) = pictures.next() {
+                        paint_pictures(view, canvas, theme, card, laid, &state);
+                    }
+                }
                 Block::Buttons(buttons) => {
                     for button in buttons {
                         let Some(r) = layout.button(button.key) else { continue };
@@ -284,6 +291,105 @@ pub(super) fn paint(
     paint_list(view, canvas, theme);
     paint_confirm(view, canvas, theme, measure);
     paint_dialog(view, canvas, theme, measure);
+}
+
+/// A card of picture choices: its text, then each group's label over its tiles (the
+/// chosen one outlined in the accent colour, as the cells of the icon picker), each tile a
+/// strip of the taskbar colour showing the tray icon, over its label.
+fn paint_pictures(
+    view: &SettingsView,
+    canvas: &mut Canvas<'_>,
+    theme: &Theme,
+    card: &PictureCard,
+    laid: &PicturesLayout,
+    state: &dyn Fn(Target, bool) -> State,
+) {
+    let layout = &view.layout;
+    let rect = layout.on_screen(laid.rect);
+    if rect.bottom() < 0.0 || rect.y > layout.size.height {
+        return;
+    }
+    let w = &theme.window;
+    canvas.fill_rounded(rect, t::CARD_RADIUS, w.card);
+    canvas.stroke_rounded(rect.inset(0.5, 0.5), t::CARD_RADIUS, 1.0, w.card_stroke);
+    if let (Some(icon), Some(r)) = (card.icon, laid.icon) {
+        let (size, _) = t::CARD_ICON;
+        canvas.glyph(icon.glyph(), size, layout.on_screen(r), theme.text_primary);
+    }
+    let (title, lines) = laid.title;
+    let title = layout.on_screen(title);
+    canvas.text_wrapped(&card.title, BODY, title, TextAlign::Leading, lines, theme.text_primary);
+    if let (Some(description), Some((r, lines))) = (&card.description, laid.description) {
+        let r = layout.on_screen(r);
+        canvas.text_wrapped(
+            description,
+            CAPTION,
+            r,
+            TextAlign::Leading,
+            lines,
+            theme.text_secondary,
+        );
+    }
+    let line = (BODY.line_height * view.text_scale).round();
+    let (_, picture_h) = t::PICTURE_TILE;
+    let (pad, label_gap, picture_radius) = t::PICTURE_TILE_INSETS;
+    for (group, rects) in card.groups.iter().zip(&laid.groups) {
+        let label = layout.on_screen(rects.label);
+        canvas.text(&group.label, BODY, label, TextAlign::Leading, theme.text_primary);
+        for (i, (tile, r)) in group.tiles.iter().zip(&rects.tiles).enumerate() {
+            let r = layout.on_screen(*r);
+            let s = state(Target::Tile(group.key, i), true);
+            if i == group.selected {
+                canvas.fill_rounded(r, t::CONTROL_RADIUS, theme.subtle_hover);
+                canvas.stroke_rounded(r.inset(1.0, 1.0), t::CONTROL_RADIUS, 2.0, theme.accent_fill);
+            } else {
+                let fill = if s.pressed {
+                    Some(theme.subtle_pressed)
+                } else if s.hot {
+                    Some(theme.subtle_hover)
+                } else {
+                    None
+                };
+                if let Some(fill) = fill {
+                    canvas.fill_rounded(r, t::CONTROL_RADIUS, fill);
+                }
+                canvas.stroke_rounded(r.inset(0.5, 0.5), t::CONTROL_RADIUS, 1.0, w.card_stroke);
+            }
+            let picture = Rect::new(r.x + pad, r.y + pad, r.width - 2.0 * pad, picture_h);
+            canvas.fill_rounded(picture, picture_radius, theme.tray.taskbar);
+            canvas.stroke_rounded(picture.inset(0.5, 0.5), picture_radius, 1.0, w.card_stroke);
+            let size = t::PICTURE_ICON;
+            let square = Rect::new(
+                (picture.x + (picture.width - size) / 2.0).round(),
+                (picture.y + (picture.height - size) / 2.0).round(),
+                size,
+                size,
+            );
+            tray::paint_in(canvas, square, &tile.picture, &theme.tray);
+            let text = Rect::new(
+                r.x + t::PICTURE_LABEL_PADDING,
+                picture.bottom() + label_gap,
+                r.width - 2.0 * t::PICTURE_LABEL_PADDING,
+                rects.label_lines as f32 * line,
+            );
+            let color = if theme.high_contrast && (s.hot || s.pressed) && i != group.selected {
+                theme.subtle_hover_text
+            } else {
+                theme.text_primary
+            };
+            canvas.text_wrapped(
+                &tile.label,
+                BODY,
+                text,
+                TextAlign::Center,
+                rects.label_lines,
+                color,
+            );
+            if s.focused {
+                focus_ring(canvas, r, t::CONTROL_RADIUS, theme);
+            }
+        }
+    }
 }
 
 /// A subtle square button with a glyph (row buttons).

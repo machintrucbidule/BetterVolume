@@ -1,23 +1,31 @@
-//! The tray icon (FR-010, FR-011).
+//! The tray icon (FR-010, FR-011, FR-083, FR-084).
 //!
-//! Style "same as Windows": the Windows volume glyph itself. Style "with device badge":
-//! the speaker part of that glyph is replaced by a drawing of the device type, in the
-//! same place, size, stroke and colour; the waves (or the mute cross) stay on the right
-//! and still show the level.
+//! Three independent choices. Picture: the speaker, or the device now playing (its type
+//! drawn in place of the speaker, larger, the waves made smaller to give it room). Look:
+//! Windows (the Windows volume glyph, one colour) or BetterVolume (the speaker of the
+//! application icon and the waves in a gradient of the accent colour, the devices as
+//! filled drawings in that gradient). Size: the Windows one, or large (stretched to the
+//! height of the icon). The waves (or the mute cross) always show the level.
 
-use crate::backend::Canvas;
+use crate::backend::{Canvas, Gradient};
 use crate::icons::VolumeLevel;
 use crate::path::Path;
+use crate::theme::TrayColors;
 use crate::{Color, Point, Rect, Theme};
 
 /// Size of the tray icon in DIPs (Windows small-icon size at 100 %).
 pub const LOGICAL_SIZE: f32 = 16.0;
 /// Where the level part of the Windows volume glyphs is cut from: the middle of the gap
-/// between the speaker (its edge ends at 7.0) and the first wave or the mute cross (they
-/// start at 8.1), measured. The clip keeps whole pixels whose centre lies right of this
-/// line, so at every Windows scaling (from 100 %) the pixel holding the speaker's
-/// anti-aliased edge is dropped and the first wave pixel is kept.
+/// between the speaker (its edge ends at [`SPEAKER_RIGHT`]) and the first wave or the
+/// mute cross (they start at [`FIRST_WAVE`]), measured. The clip keeps whole pixels
+/// whose centre lies right of this line, so at every Windows scaling (from 100 %) the
+/// pixel holding the speaker's anti-aliased edge is dropped and the first wave pixel is
+/// kept.
 const LEVEL_START: f32 = 7.55;
+/// Right edge of the speaker of the Windows volume glyphs (measured).
+const SPEAKER_RIGHT: f32 = 7.0;
+/// Left edge of the first wave and of the mute cross of the Windows glyphs (measured).
+const FIRST_WAVE: f32 = 8.1;
 /// Stroke width of the Windows volume glyphs at 16 DIPs (measured).
 const STROKE: f32 = 1.0;
 /// Size "Large" (FR-083): the drawing stretched vertically about the middle of the icon.
@@ -28,8 +36,17 @@ const STROKE: f32 = 1.0;
 pub const LARGE_STRETCH: f32 = 20.0 / 17.0;
 /// Vertical middle of the icon, the line the large size is stretched about.
 const MIDDLE: f32 = LOGICAL_SIZE / 2.0;
+/// Picture "device now playing": the waves at this scale, about the middle of the icon's
+/// right edge, so the device gets more room than the Windows speaker.
+pub const DEVICE_WAVES_SCALE: f32 = 0.75;
+/// Picture "device now playing": the width of the device drawing, from the left edge to
+/// the Windows gap before the (smaller) waves.
+pub const DEVICE_WIDTH: f32 =
+    LOGICAL_SIZE - (LOGICAL_SIZE - FIRST_WAVE) * DEVICE_WAVES_SCALE - (FIRST_WAVE - SPEAKER_RIGHT);
+/// Vertical centre of the speaker in the Windows glyphs, and of the device drawings.
+const DEVICE_CENTER_Y: f32 = 8.0;
 
-/// Type of the current output, shown by the "with device badge" style.
+/// Type of the current output, shown by the picture "device now playing".
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DeviceType {
     /// Speaker enclosure.
@@ -42,16 +59,28 @@ pub enum DeviceType {
     Display,
 }
 
+/// Look of the tray icon (FR-084).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum TrayLook {
+    /// The Windows volume glyph, in the taskbar's text colour.
+    #[default]
+    Windows,
+    /// The speaker of the application icon and the waves in the accent gradient.
+    BetterVolume,
+}
+
 /// What the tray icon shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TrayIcon {
     /// Volume step of the current output. `None`: no output device.
     pub level: Option<VolumeLevel>,
-    /// Style "with device badge": the device drawn in place of the speaker. `None`: the
-    /// Windows speaker (style "same as Windows", or a device of no particular type).
+    /// Picture "device now playing": the device drawn in place of the speaker. `None`:
+    /// the speaker (picture "speaker", or a device of no particular type).
     pub badge: Option<DeviceType>,
     /// Size "Large" (FR-083): stretched to the icon's height ([`LARGE_STRETCH`]).
     pub large: bool,
+    /// The look (FR-084).
+    pub look: TrayLook,
 }
 
 /// The scale to rasterise an icon of `pixels` × `pixels` at.
@@ -62,464 +91,329 @@ pub fn scale_for(pixels: u32) -> f32 {
 /// Paints the icon on a transparent canvas of [`LOGICAL_SIZE`] DIPs.
 pub fn paint(canvas: &mut Canvas<'_>, icon: &TrayIcon, theme: &Theme) {
     canvas.clear(Color::TRANSPARENT);
+    draw(canvas, icon, &theme.tray);
+}
+
+/// Paints the icon over what is drawn, filling the square `square` (a picture of the
+/// icon, such as the choices of the settings window).
+pub fn paint_in(canvas: &mut Canvas<'_>, square: Rect, icon: &TrayIcon, colors: &TrayColors) {
+    let scale = square.width.min(square.height) / LOGICAL_SIZE;
+    canvas.placed(Point::new(square.x, square.y), scale, |c| draw(c, icon, colors));
+}
+
+fn draw(canvas: &mut Canvas<'_>, icon: &TrayIcon, colors: &TrayColors) {
     if icon.large {
-        canvas.stretched_vertically(LARGE_STRETCH, MIDDLE, |c| paint_icon(c, icon, theme));
+        canvas.stretched_vertically(LARGE_STRETCH, MIDDLE, |c| paint_icon(c, icon, colors));
     } else {
-        paint_icon(canvas, icon, theme);
+        paint_icon(canvas, icon, colors);
     }
 }
 
-/// The icon at the Windows size (the stretch, if any, is already set).
-fn paint_icon(canvas: &mut Canvas<'_>, icon: &TrayIcon, theme: &Theme) {
-    let full = Rect::new(0.0, 0.0, LOGICAL_SIZE, LOGICAL_SIZE);
-    // No device: Windows shows the muted speaker, dimmed.
-    let (level, color) = match icon.level {
-        Some(level) => (level, theme.tray_glyph),
-        None => (VolumeLevel::Muted, theme.tray_glyph.with_alpha(theme.tray_glyph.a * 0.6)),
-    };
-    let glyph = level.icon().glyph();
-    let level_part = Rect::new(LEVEL_START, 0.0, LOGICAL_SIZE - LEVEL_START, LOGICAL_SIZE);
-    // Windows 11 draws the waves not reached in its "disabled text" colour under the
-    // reached ones: #5D white on a dark taskbar, #5C black on a light one, the
-    // GrayText system colour in high contrast. The muted icon (also the "no device" one)
-    // has a cross instead, and no waves.
-    if level != VolumeLevel::Muted && level != VolumeLevel::High {
-        let all_waves = VolumeLevel::High.icon().glyph();
-        canvas.clipped(level_part, |c| {
-            c.glyph(all_waves, LOGICAL_SIZE, full, theme.text_disabled);
-        });
+/// What one painting needs: the look actually drawn and its colours.
+struct Ink<'a> {
+    colors: &'a TrayColors,
+    look: TrayLook,
+    /// No output device: everything in the dimmed glyph colour, as Windows.
+    dim: bool,
+}
+
+impl Ink<'_> {
+    /// The one colour of the Windows look (dimmed without a device).
+    fn plain(&self) -> Color {
+        let glyph = self.colors.glyph;
+        if self.dim {
+            glyph.with_alpha(glyph.a * 0.6)
+        } else {
+            glyph
+        }
     }
-    match icon.badge {
-        None => canvas.glyph(glyph, LOGICAL_SIZE, full, color),
-        Some(device) => {
-            canvas.clipped(level_part, |c| c.glyph(glyph, LOGICAL_SIZE, full, color));
-            paint_device(canvas, device, color);
+
+    /// Whether to paint with the accent gradient.
+    fn gradient(&self) -> bool {
+        self.look == TrayLook::BetterVolume && !self.dim
+    }
+
+    /// The accent gradient from `from` (top) to `to` (bottom).
+    fn accent(&self, from: Point, to: Point) -> Gradient {
+        Gradient { from, to, colors: self.colors.accent }
+    }
+
+    /// Runs `draw` in the colour of this look: `draw` gets the colour to use, and inside
+    /// the gradient that colour only gives the opacity.
+    fn paint(
+        &self,
+        canvas: &mut Canvas<'_>,
+        from: Point,
+        to: Point,
+        draw: impl FnOnce(&mut Canvas<'_>, Color),
+    ) {
+        if self.gradient() {
+            canvas.with_gradient(&self.accent(from, to), |c| draw(c, Color::WHITE));
+        } else {
+            draw(canvas, self.plain());
         }
     }
 }
 
-/// Width of the device drawing (outer stroke edges): exactly the speaker's, so the gap
-/// Windows leaves before the first wave is kept at every scaling.
-const DEVICE_WIDTH: f32 = 7.0;
-/// Vertical centre of the speaker in the Windows glyphs.
-const DEVICE_CENTER_Y: f32 = 8.0;
+/// The icon at the Windows size (the stretch, if any, is already set).
+fn paint_icon(canvas: &mut Canvas<'_>, icon: &TrayIcon, colors: &TrayColors) {
+    // No device: Windows shows the muted speaker, dimmed.
+    let (level, dim) = match icon.level {
+        Some(level) => (level, false),
+        None => (VolumeLevel::Muted, true),
+    };
+    // High contrast allows only the system colours: the Windows look then.
+    let look = if colors.high_contrast { TrayLook::Windows } else { icon.look };
+    let ink = Ink { colors, look, dim };
+    match icon.badge {
+        None => {
+            level_part(canvas, level, &ink);
+            match look {
+                // The Windows speaker: the glyph's own part left of the cut.
+                TrayLook::Windows => canvas
+                    .clipped(Rect::new(0.0, 0.0, LEVEL_START, LOGICAL_SIZE), |c| {
+                        glyph(c, level.icon().glyph(), ink.plain())
+                    }),
+                TrayLook::BetterVolume => {
+                    let speaker = app_speaker();
+                    ink.paint(canvas, Point::new(1.0, 3.0), Point::new(6.0, 13.0), |c, color| {
+                        c.fill_path(&speaker, color)
+                    });
+                }
+            }
+        }
+        Some(device) => {
+            let anchor = Point::new(LOGICAL_SIZE, MIDDLE);
+            canvas.scaled(DEVICE_WAVES_SCALE, DEVICE_WAVES_SCALE, anchor, |c| {
+                level_part(c, level, &ink)
+            });
+            let (from, to) =
+                (Point::new(DEVICE_WIDTH * 0.2, 2.5), Point::new(DEVICE_WIDTH * 0.8, 13.5));
+            match look {
+                TrayLook::Windows => outline_device(canvas, device, ink.plain()),
+                TrayLook::BetterVolume => {
+                    ink.paint(canvas, from, to, |c, color| filled_device(c, device, color))
+                }
+            }
+        }
+    }
+}
 
-/// Draws a device in place of the speaker of the Windows glyph, in its natural
-/// proportions (never stretched to the speaker's tall shape): at most [`DEVICE_WIDTH`]
-/// wide, centred on the speaker's middle, stroke 1 DIP like the speaker it replaces.
-fn paint_device(canvas: &mut Canvas<'_>, device: DeviceType, color: Color) {
+fn glyph(canvas: &mut Canvas<'_>, glyph: char, color: Color) {
+    canvas.glyph(glyph, LOGICAL_SIZE, Rect::new(0.0, 0.0, LOGICAL_SIZE, LOGICAL_SIZE), color);
+}
+
+/// The waves (or the mute cross) of the Windows glyph of `level`, right of the cut.
+/// Windows 11 draws the waves not reached in its "disabled text" colour under the
+/// reached ones (#5D white on a dark taskbar, #5C black on a light one, GrayText in high
+/// contrast); the BetterVolume look draws them in a pale accent. The muted icon (also the
+/// "no device" one) has a cross instead, and no waves.
+fn level_part(canvas: &mut Canvas<'_>, level: VolumeLevel, ink: &Ink<'_>) {
+    let part = Rect::new(LEVEL_START, 0.0, LOGICAL_SIZE - LEVEL_START, LOGICAL_SIZE);
+    if level != VolumeLevel::Muted && level != VolumeLevel::High {
+        let unreached = match ink.look {
+            TrayLook::Windows => ink.colors.unreached,
+            TrayLook::BetterVolume => ink.colors.accent_unreached,
+        };
+        let all = VolumeLevel::High.icon().glyph();
+        canvas.clipped(part, |c| glyph(c, all, unreached));
+    }
+    let reached = level.icon().glyph();
+    ink.paint(canvas, Point::new(9.0, 2.0), Point::new(14.0, 14.0), |c, color| {
+        c.clipped(part, |c| glyph(c, reached, color))
+    });
+}
+
+/// The speaker of the application icon (its small drawing, `BetterVolume-small.svg`,
+/// without the two roads), in the place of the Windows speaker: from the left edge to
+/// [`SPEAKER_RIGHT`], centred on the speaker's middle.
+fn app_speaker() -> Path {
+    // The drawing spans x 2 to 19.8 and is centred on y 24 in its 48-unit square.
+    let s = SPEAKER_RIGHT / 17.8;
+    let p = |x: f32, y: f32| ((x - 2.0) * s, DEVICE_CENTER_Y + (y - 24.0) * s);
+    let at = |path: Path, x: f32, y: f32| {
+        let (x, y) = p(x, y);
+        path.line_to(x, y)
+    };
+    let (x, y) = p(2.0, 18.4);
+    let r = 2.4 * s;
+    let path = Path::new().move_to(x, y);
+    let (x, y) = p(4.4, 16.0);
+    let path = path.arc_to(x, y, r, true);
+    let path = at(at(path, 8.8, 16.0), 16.3, 9.6);
+    let path = path.cubic_to(p(17.7, 8.4), p(19.8, 9.4), p(19.8, 11.2));
+    let path = at(path, 19.8, 36.8);
+    let path = path.cubic_to(p(19.8, 38.6), p(17.7, 39.6), p(16.3, 38.4));
+    let path = at(at(path, 8.8, 32.0), 4.4, 32.0);
+    let (x, y) = p(2.0, 29.6);
+    path.arc_to(x, y, r, true).close()
+}
+
+/// A closed rounded rectangle figure added to `path`.
+fn rounded(path: Path, r: Rect, radius: f32) -> Path {
+    let (x, y, w, h) = (r.x, r.y, r.width, r.height);
+    path.move_to(x + radius, y)
+        .line_to(x + w - radius, y)
+        .arc_to(x + w, y + radius, radius, true)
+        .line_to(x + w, y + h - radius)
+        .arc_to(x + w - radius, y + h, radius, true)
+        .line_to(x + radius, y + h)
+        .arc_to(x, y + h - radius, radius, true)
+        .line_to(x, y + radius)
+        .arc_to(x + radius, y, radius, true)
+        .close()
+}
+
+/// A closed circle figure added to `path`.
+fn circle(path: Path, cx: f32, cy: f32, r: f32) -> Path {
+    path.move_to(cx - r, cy).arc_to(cx + r, cy, r, true).arc_to(cx - r, cy, r, true).close()
+}
+
+/// The device, Windows look: 1-DIP outlines like the Windows speaker it replaces, in its
+/// natural proportions (never stretched to the speaker's tall shape), [`DEVICE_WIDTH`]
+/// wide at most, centred on the speaker's middle. Drawn at 7 DIPs, then enlarged.
+fn outline_device(canvas: &mut Canvas<'_>, device: DeviceType, color: Color) {
+    let f = DEVICE_WIDTH / 7.0;
+    let w = DEVICE_WIDTH;
     let half = STROKE / 2.0;
     let cy = DEVICE_CENTER_Y;
     match device {
         DeviceType::Speakers => {
             // A cabinet (about 5 wide for 7 high), tweeter and woofer.
-            let (w, h) = (6.25, 8.75);
-            let x = (DEVICE_WIDTH - w) / 2.0;
+            let (cw, h) = (6.25 * f, 8.75 * f);
+            let x = (w - cw) / 2.0;
             canvas.stroke_rounded(
-                Rect::new(x + half, cy - h / 2.0 + half, w - STROKE, h - STROKE),
-                1.25,
+                Rect::new(x + half, cy - h / 2.0 + half, cw - STROKE, h - STROKE),
+                1.25 * f,
                 STROKE,
                 color,
             );
-            let mid = x + w / 2.0;
-            canvas.fill_circle(Point::new(mid, cy - 2.2), 0.7, color);
-            canvas.stroke_circle(Point::new(mid, cy + 1.25), 1.35, STROKE, color);
+            let mid = x + cw / 2.0;
+            canvas.fill_circle(Point::new(mid, cy - 2.2 * f), 0.7 * f, color);
+            canvas.stroke_circle(Point::new(mid, cy + 1.25 * f), 1.35 * f, STROKE, color);
         }
-        DeviceType::Headphones => headphones(canvas, color, false),
-        DeviceType::Headset => headphones(canvas, color, true),
+        DeviceType::Headphones | DeviceType::Headset => {
+            // Round headband, filled ear cups; a microphone boom for a headset.
+            let microphone = device == DeviceType::Headset;
+            let top = cy - w / 2.0;
+            let bottom = top + w;
+            let radius = w / 2.0 - half;
+            let band_y = top + half + radius;
+            let band = Path::new()
+                .move_to(half, band_y)
+                .arc_to(w - half, band_y, radius, true)
+                .move_to(half, band_y)
+                .line_to(half, band_y + 0.5)
+                .move_to(w - half, band_y)
+                .line_to(w - half, band_y + 0.5);
+            canvas.stroke_path(&band, STROKE, color);
+            let cup_w = 2.3 * f;
+            let cup_bottom = if microphone { bottom - 1.2 * f } else { bottom };
+            let cup_top = band_y - 0.4 * f;
+            let cup = |x: f32| Rect::new(x, cup_top, cup_w, cup_bottom - cup_top);
+            canvas.fill_rounded(cup(0.0), 0.9 * f, color);
+            canvas.fill_rounded(cup(w - cup_w), 0.9 * f, color);
+            if microphone {
+                // Boom from under the left cup to the front, ending in the capsule.
+                let y = bottom - half;
+                let boom = Path::new()
+                    .move_to(cup_w / 2.0, cup_bottom - 0.2)
+                    .arc_to(cup_w / 2.0 + 1.1 * f, y, 1.1 * f, false)
+                    .line_to(w / 2.0 + 0.6 * f, y);
+                canvas.stroke_path(&boom, STROKE, color);
+                canvas.fill_circle(Point::new(w / 2.0 + 1.0 * f, y), 0.8 * f, color);
+            }
+        }
         DeviceType::Display => {
             // A 16:10 screen on a short stand.
-            let (w, screen_h) = (DEVICE_WIDTH, 4.75);
-            let top = cy - 3.6;
+            let screen_h = 4.75 * f;
+            let top = cy - 3.6 * f;
             canvas.stroke_rounded(
                 Rect::new(half, top + half, w - STROKE, screen_h - STROKE),
-                0.9,
+                0.9 * f,
                 STROKE,
                 color,
             );
             let mid = w / 2.0;
-            let foot = top + screen_h + 1.9;
+            let foot = top + screen_h + 1.9 * f;
             let stand = Path::new()
                 .move_to(mid, top + screen_h)
                 .line_to(mid, foot)
-                .move_to(mid - 1.75, foot)
-                .line_to(mid + 1.75, foot);
+                .move_to(mid - 1.75 * f, foot)
+                .line_to(mid + 1.75 * f, foot);
             canvas.stroke_path(&stand, STROKE, color);
         }
     }
 }
 
-/// Headphones (round headband, filled ear cups), square overall; with a microphone boom
-/// for a headset.
-fn headphones(canvas: &mut Canvas<'_>, color: Color, microphone: bool) {
-    let half = STROKE / 2.0;
-    let (w, h) = (DEVICE_WIDTH, DEVICE_WIDTH);
-    let top = DEVICE_CENTER_Y - h / 2.0;
-    let bottom = top + h;
-    let radius = w / 2.0 - half;
-    let band_y = top + half + radius;
-    let band = Path::new()
-        .move_to(half, band_y)
-        .arc_to(w - half, band_y, radius, true)
-        .move_to(half, band_y)
-        .line_to(half, band_y + 0.5)
-        .move_to(w - half, band_y)
-        .line_to(w - half, band_y + 0.5);
-    canvas.stroke_path(&band, STROKE, color);
-    let cup_w = 2.3;
-    let cup_bottom = if microphone { bottom - 1.2 } else { bottom };
-    let cup_top = band_y - 0.4;
-    canvas.fill_rounded(Rect::new(0.0, cup_top, cup_w, cup_bottom - cup_top), 0.9, color);
-    canvas.fill_rounded(Rect::new(w - cup_w, cup_top, cup_w, cup_bottom - cup_top), 0.9, color);
-    if microphone {
-        // Boom from under the left cup to the front, ending in the capsule.
-        let y = bottom - half;
-        let boom = Path::new()
-            .move_to(cup_w / 2.0, cup_bottom - 0.2)
-            .arc_to(cup_w / 2.0 + 1.1, y, 1.1, false)
-            .line_to(w / 2.0 + 0.6, y);
-        canvas.stroke_path(&boom, STROKE, color);
-        canvas.fill_circle(Point::new(w / 2.0 + 1.0, y), 0.8, color);
+/// The device, BetterVolume look: filled drawings (the speaker cabinet with its drivers
+/// cut out, a thick headband, a full screen), [`DEVICE_WIDTH`] wide at most, centred on
+/// the speaker's middle.
+fn filled_device(canvas: &mut Canvas<'_>, device: DeviceType, color: Color) {
+    let w = DEVICE_WIDTH;
+    let cy = DEVICE_CENTER_Y;
+    match device {
+        DeviceType::Speakers => {
+            let cw = w * 0.86;
+            let ch = cw * 1.38;
+            let x = (w - cw) / 2.0;
+            let mid = x + cw / 2.0;
+            // Even-odd filling: the drivers are holes in the cabinet.
+            let cabinet = rounded(Path::new(), Rect::new(x, cy - ch / 2.0, cw, ch), cw * 0.2);
+            let cabinet = circle(cabinet, mid, cy - ch * 0.26, cw * 0.11);
+            let cabinet = circle(cabinet, mid, cy + ch * 0.15, cw * 0.27);
+            canvas.fill_path(&cabinet, color);
+            canvas.fill_circle(Point::new(mid, cy + ch * 0.15), cw * 0.09, color);
+        }
+        DeviceType::Headphones | DeviceType::Headset => {
+            let microphone = device == DeviceType::Headset;
+            let band_w = w * 0.15;
+            let top = cy - w / 2.0;
+            let bottom = top + w;
+            let radius = (w - band_w) / 2.0;
+            let band_y = top + band_w / 2.0 + radius;
+            let band = Path::new()
+                .move_to(band_w / 2.0, band_y + 0.3)
+                .line_to(band_w / 2.0, band_y)
+                .arc_to(w - band_w / 2.0, band_y, radius, true)
+                .line_to(w - band_w / 2.0, band_y + 0.3);
+            canvas.stroke_path(&band, band_w, color);
+            let cup_w = w * 0.36;
+            let cup_bottom = if microphone { bottom - w * 0.17 } else { bottom };
+            let cup_top = band_y - w * 0.08;
+            let cup = |x: f32| Rect::new(x, cup_top, cup_w, cup_bottom - cup_top);
+            canvas.fill_rounded(cup(0.0), cup_w * 0.38, color);
+            canvas.fill_rounded(cup(w - cup_w), cup_w * 0.38, color);
+            if microphone {
+                let y = bottom - band_w / 2.0;
+                let boom = Path::new()
+                    .move_to(cup_w / 2.0, cup_bottom - 0.2)
+                    .arc_to(cup_w / 2.0 + w * 0.16, y, w * 0.16, false)
+                    .line_to(w / 2.0 + w * 0.08, y);
+                canvas.stroke_path(&boom, band_w * 0.85, color);
+                canvas.fill_circle(Point::new(w / 2.0 + w * 0.14, y), band_w * 0.75, color);
+            }
+        }
+        DeviceType::Display => {
+            let screen_h = w * 0.66;
+            let total = screen_h + w * 0.3;
+            let top = cy - total / 2.0;
+            let screen = rounded(Path::new(), Rect::new(0.0, top, w, screen_h), w * 0.11);
+            canvas.fill_path(&screen, color);
+            let neck = w * 0.14;
+            canvas.fill_rect(
+                Rect::new(w / 2.0 - neck / 2.0, top + screen_h - 0.1, neck, w * 0.2),
+                color,
+            );
+            let (foot_w, foot_h) = (w * 0.56, w * 0.12);
+            canvas.fill_rounded(
+                Rect::new(w / 2.0 - foot_w / 2.0, top + total - foot_h, foot_w, foot_h),
+                foot_h / 2.0,
+                color,
+            );
+        }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::backend::{DeviceKind, Graphics, Pixels};
-    use crate::ThemeInputs;
-
-    /// Small-icon sizes of every Windows scaling step (100 % to 300 %) and a larger one.
-    const SIZES: [u32; 9] = [16, 20, 24, 28, 32, 36, 40, 48, 64];
-    const DEVICES: [DeviceType; 4] =
-        [DeviceType::Speakers, DeviceType::Headphones, DeviceType::Headset, DeviceType::Display];
-
-    fn render(gfx: &Graphics, px: u32, paint: impl FnOnce(&mut Canvas<'_>)) -> Pixels {
-        gfx.rasterize(px, px, scale_for(px), 1.0, paint).expect("rasterize")
-    }
-
-    /// Runs `draw` stretched like the large icon when `large`.
-    fn sized(c: &mut Canvas<'_>, large: bool, draw: impl FnOnce(&mut Canvas<'_>)) {
-        if large {
-            c.stretched_vertically(LARGE_STRETCH, MIDDLE, draw);
-        } else {
-            draw(c);
-        }
-    }
-
-    fn first_level_column(px: u32) -> u32 {
-        // Pixels whose centre lies right of LEVEL_START.
-        (LEVEL_START * scale_for(px) - 0.5).ceil() as u32
-    }
-
-    #[test]
-    fn nothing_of_the_windows_speaker_remains_next_to_the_device() {
-        let gfx = Graphics::new(DeviceKind::Software).expect("graphics");
-        let theme = Theme::shell(&ThemeInputs::default());
-        for (px, large) in SIZES.into_iter().flat_map(|px| [(px, false), (px, true)]) {
-            for device in DEVICES {
-                // Volume 0: the Windows glyph is the speaker alone, so after the cut only
-                // the device drawing may remain.
-                let icon = TrayIcon { level: Some(VolumeLevel::Zero), badge: Some(device), large };
-                let with_glyph = render(&gfx, px, |c| paint(c, &icon, &theme));
-                let device_only = render(&gfx, px, |c| {
-                    c.clear(Color::TRANSPARENT);
-                    sized(c, large, |c| paint_device(c, device, theme.tray_glyph));
-                });
-                // Left of the cut only the device; right of it, the dimmed waves.
-                for y in 0..px {
-                    for x in 0..first_level_column(px) {
-                        assert_eq!(
-                            with_glyph.pixel(x, y),
-                            device_only.pixel(x, y),
-                            "{device:?} at {px} px (large {large}), pixel ({x}, {y}): speaker remnant"
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn waves_not_reached_are_dimmed_like_windows_11() {
-        use crate::theme::{HighContrastColors, ThemeMode};
-        let gfx = Graphics::new(DeviceKind::Software).expect("graphics");
-        let high_contrast = HighContrastColors {
-            window: Color::BLACK,
-            window_text: Color::WHITE,
-            highlight: Color::rgb(0x1AEBFF),
-            highlight_text: Color::BLACK,
-            gray_text: Color::rgb(0x3FF23F),
-            button_face: Color::BLACK,
-            button_text: Color::WHITE,
-            hotlight: Color::rgb(0xFFFF00),
-        };
-        let themes = [
-            ("dark", ThemeInputs::default()),
-            ("light", ThemeInputs { system_mode: ThemeMode::Light, ..ThemeInputs::default() }),
-            (
-                "high contrast",
-                ThemeInputs { high_contrast: Some(high_contrast), ..ThemeInputs::default() },
-            ),
-        ];
-        for (name, inputs) in themes {
-            let theme = Theme::shell(&inputs);
-            // Large enough for the 1-DIP wave stroke to cover whole pixels.
-            for (px, large) in [(32, false), (64, false), (32, true), (64, true)] {
-                let name = format!("{name} (large {large})");
-                let draw = |level| {
-                    render(&gfx, px, |c| {
-                        paint(c, &TrayIcon { level: Some(level), badge: None, large }, &theme)
-                    })
-                };
-                let alpha = |img: &Pixels| {
-                    (0..px * px).map(|i| u32::from(img.pixel(i % px, i / px)[3])).sum::<u32>()
-                };
-                let (zero, low, medium, high) = (
-                    draw(VolumeLevel::Zero),
-                    draw(VolumeLevel::Low),
-                    draw(VolumeLevel::Medium),
-                    draw(VolumeLevel::High),
-                );
-                // Every level shows the three waves: more of them solid as the level rises
-                // (in high contrast GrayText is opaque: the colour check below covers it).
-                assert!(
-                    theme.high_contrast
-                        || (alpha(&zero) < alpha(&low)
-                            && alpha(&low) < alpha(&medium)
-                            && alpha(&medium) < alpha(&high)),
-                    "{name} at {px} px"
-                );
-                // Full volume and mute (also "no device") are the Windows glyphs alone.
-                let glyph_only = |level: VolumeLevel, color: Color| {
-                    render(&gfx, px, |c| {
-                        c.clear(Color::TRANSPARENT);
-                        sized(c, large, |c| {
-                            c.glyph(
-                                level.icon().glyph(),
-                                LOGICAL_SIZE,
-                                Rect::new(0.0, 0.0, LOGICAL_SIZE, LOGICAL_SIZE),
-                                color,
-                            );
-                        });
-                    })
-                };
-                // Where only the outer wave of the Windows glyphs is (fully covered), a low
-                // level shows it in the "disabled text" colour exactly.
-                let raw_high = glyph_only(VolumeLevel::High, theme.tray_glyph);
-                let raw_medium = glyph_only(VolumeLevel::Medium, theme.tray_glyph);
-                // The glyph colour may be partly transparent (light taskbar: #E4000000).
-                let full_alpha = theme.tray_glyph.a * 255.0;
-                let outer: Vec<(u32, u32)> = (0..px)
-                    .flat_map(|y| (first_level_column(px)..px).map(move |x| (x, y)))
-                    .filter(|&(x, y)| {
-                        f32::from(raw_high.pixel(x, y)[3]) >= 0.98 * full_alpha
-                            && raw_medium.pixel(x, y)[3] == 0
-                    })
-                    .collect();
-                assert!(!outer.is_empty(), "{name} at {px} px: no outer wave pixel");
-                let d = theme.text_disabled;
-                for (x, y) in outer {
-                    let cover = f32::from(raw_high.pixel(x, y)[3]) / full_alpha;
-                    let expected = [d.b * d.a, d.g * d.a, d.r * d.a, d.a]
-                        .map(|v| (v * cover * 255.0).round() as i32);
-                    let got = low.pixel(x, y).map(i32::from);
-                    let close = got.iter().zip(expected).all(|(g, e)| (g - e).abs() <= 3);
-                    assert!(
-                        close,
-                        "{name} at {px} px, pixel ({x}, {y}): {got:?}, expected {expected:?}"
-                    );
-                    assert_eq!(
-                        medium.pixel(x, y),
-                        low.pixel(x, y),
-                        "{name}: the outer wave is dim at medium too"
-                    );
-                }
-                assert_eq!(high, glyph_only(VolumeLevel::High, theme.tray_glyph), "{name}");
-                assert_eq!(
-                    draw(VolumeLevel::Muted),
-                    glyph_only(VolumeLevel::Muted, theme.tray_glyph),
-                    "{name}"
-                );
-                let none = render(&gfx, px, |c| {
-                    paint(c, &TrayIcon { level: None, badge: None, large }, &theme)
-                });
-                let dimmed = theme.tray_glyph.with_alpha(theme.tray_glyph.a * 0.6);
-                assert_eq!(none, glyph_only(VolumeLevel::Muted, dimmed), "{name}: no device");
-            }
-        }
-    }
-
-    #[test]
-    fn the_level_part_is_the_windows_one_and_the_device_stays_left_of_it() {
-        let gfx = Graphics::new(DeviceKind::Software).expect("graphics");
-        let theme = Theme::shell(&ThemeInputs::default());
-        let levels = [
-            VolumeLevel::Zero,
-            VolumeLevel::Low,
-            VolumeLevel::Medium,
-            VolumeLevel::High,
-            VolumeLevel::Muted,
-        ];
-        for (px, large) in SIZES.into_iter().flat_map(|px| [(px, false), (px, true)]) {
-            let first = first_level_column(px);
-            for level in levels {
-                let plain = render(&gfx, px, |c| {
-                    paint(c, &TrayIcon { level: Some(level), badge: None, large }, &theme)
-                });
-                for device in DEVICES {
-                    let icon = TrayIcon { level: Some(level), badge: Some(device), large };
-                    let badged = render(&gfx, px, |c| paint(c, &icon, &theme));
-                    for y in 0..px {
-                        for x in first..px {
-                            assert_eq!(
-                                badged.pixel(x, y),
-                                plain.pixel(x, y),
-                                "{device:?} {level:?} at {px} px (large {large}), pixel ({x}, {y})"
-                            );
-                        }
-                    }
-                    // The device never reaches further right than the Windows speaker it
-                    // replaces, so the gap before the first wave stays the Windows one.
-                    let device_only = render(&gfx, px, |c| {
-                        c.clear(Color::TRANSPARENT);
-                        sized(c, large, |c| paint_device(c, device, theme.tray_glyph));
-                    });
-                    let last = |img: &Pixels| {
-                        (0..first)
-                            .filter(|&x| (0..px).any(|y| img.pixel(x, y)[3] > 8))
-                            .max()
-                            .unwrap_or(0)
-                    };
-                    let speaker = render(&gfx, px, |c| {
-                        paint(
-                            c,
-                            &TrayIcon { level: Some(VolumeLevel::Zero), badge: None, large },
-                            &theme,
-                        )
-                    });
-                    assert!(
-                        last(&speaker) > 0,
-                        "nothing drawn: the Windows icon font (Segoe Fluent Icons) is missing"
-                    );
-                    assert!(
-                        last(&device_only) <= last(&speaker),
-                        "{device:?} at {px} px (large {large}) reaches column {}, the speaker {}",
-                        last(&device_only),
-                        last(&speaker)
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn the_large_icon_is_taller_whole_and_keeps_the_windows_widths() {
-        let gfx = Graphics::new(DeviceKind::Software).expect("graphics");
-        let levels = [
-            Some(VolumeLevel::Muted),
-            Some(VolumeLevel::Zero),
-            Some(VolumeLevel::Low),
-            Some(VolumeLevel::Medium),
-            Some(VolumeLevel::High),
-            None,
-        ];
-        let badges = [None, Some(DeviceType::Headphones), Some(DeviceType::Speakers)];
-        let mut problems = Vec::new();
-        for mode in [crate::theme::ThemeMode::Dark, crate::theme::ThemeMode::Light] {
-            let theme = Theme::shell(&ThemeInputs { system_mode: mode, ..ThemeInputs::default() });
-            for px in SIZES {
-                for level in levels {
-                    for badge in badges {
-                        let draw = |large| {
-                            render(&gfx, px, |c| {
-                                paint(c, &TrayIcon { level, badge, large }, &theme)
-                            })
-                        };
-                        let (windows, large) = (draw(false), draw(true));
-                        let what = format!("{mode:?} {level:?} {badge:?} at {px} px");
-                        // Half covered at least, whatever the colour's own opacity.
-                        let colour = match level {
-                            Some(_) => theme.tray_glyph.a,
-                            None => theme.tray_glyph.a * 0.6,
-                        };
-                        let inked = |img: &Pixels, x: u32, y: u32| {
-                            f32::from(img.pixel(x, y)[3]) > 0.5 * colour * 255.0
-                        };
-                        let span = |img: &Pixels, columns: bool| {
-                            let lines: Vec<u32> = (0..px)
-                                .filter(|&a| {
-                                    (0..px).any(|b| {
-                                        if columns {
-                                            inked(img, a, b)
-                                        } else {
-                                            inked(img, b, a)
-                                        }
-                                    })
-                                })
-                                .collect();
-                            (lines.first().copied(), lines.last().copied())
-                        };
-                        // Same width as the Windows icon: the same first and last columns,
-                        // give or take the half-covered edge pixel.
-                        let (w, l) = (span(&windows, true), span(&large, true));
-                        let near = |a: Option<u32>, b: Option<u32>| match (a, b) {
-                            (Some(a), Some(b)) => a.abs_diff(b) <= 1,
-                            _ => a == b,
-                        };
-                        if !near(w.0, l.0) || !near(w.1, l.1) {
-                            problems.push(format!("{what}: columns {l:?}, Windows {w:?}"));
-                        }
-                        // Taller by the stretch (within a pixel of rounding), inside the icon.
-                        let height = |s: (Option<u32>, Option<u32>)| match s {
-                            (Some(first), Some(last)) => last - first + 1,
-                            _ => 0,
-                        };
-                        let (w, l) = (height(span(&windows, false)), height(span(&large, false)));
-                        let expected = f64::from(w) * f64::from(LARGE_STRETCH);
-                        if f64::from(l) < expected - 2.5 || l > px {
-                            problems.push(format!("{what}: {l} rows, Windows {w}"));
-                        }
-                        // Not cut: drawn with room above and below, nothing goes past the
-                        // icon's square, and inside it the picture is the same.
-                        let room = px / 4;
-                        let roomy = gfx
-                            .rasterize(px, px + 2 * room, scale_for(px), 1.0, |c| {
-                                c.shifted_down(room as f32 / scale_for(px), |c| {
-                                    paint(c, &TrayIcon { level, badge, large: true }, &theme)
-                                })
-                            })
-                            .expect("rasterize");
-                        for y in 0..px + 2 * room {
-                            for x in 0..px {
-                                let got = roomy.pixel(x, y);
-                                let inside = (room..room + px).contains(&y);
-                                if inside && got != large.pixel(x, y - room) {
-                                    problems.push(format!("{what}: ({x}, {y}) differs with room"));
-                                } else if !inside && got[3] != 0 {
-                                    problems.push(format!("{what}: cut at ({x}, {y}): {got:?}"));
-                                }
-                            }
-                        }
-                        let full = colour * 255.0;
-                        // Drawn, not an enlarged picture: about as many fully covered pixels
-                        // as at the Windows size at least (stretching a picture blurs them).
-                        let solid = |img: &Pixels| {
-                            (0..px * px)
-                                .filter(|i| f32::from(img.pixel(i % px, i / px)[3]) >= 0.98 * full)
-                                .count()
-                        };
-                        if solid(&large) * 10 < solid(&windows) * 8 {
-                            problems.push(format!(
-                                "{what}: {} solid pixels, Windows {}",
-                                solid(&large),
-                                solid(&windows)
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-        assert!(problems.is_empty(), "{}", problems.join("\n"));
-    }
-}
+mod tests;

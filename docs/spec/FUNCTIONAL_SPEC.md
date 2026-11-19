@@ -20,10 +20,9 @@ Wording: **must** = required for v1.
 
 - **FR-010** The icon shows the master volume of the current output with the same visual
   steps as Windows 11 (muted, 0, low, medium, high).
-- **FR-011** Two icon styles, selectable in settings: "same as Windows" (default) and
-  "with device badge": the speaker part of the Windows icon is replaced by a drawing of
-  the type of the current output, same place, stroke and colour, the waves still showing
-  the level.
+- **FR-011** Picture, selectable in settings: "speaker" (default) or "device": the
+  speaker part of the icon is replaced by a larger drawing of the type of the current
+  output, the waves made smaller to give it room and still showing the level.
 - **FR-012** Tooltip: current output display name and volume, or "muted", with each
   language's typography: `Speakers: 40%` / `Haut-parleurs : 40 %`.
   A name too long for the tooltip is shortened with an ellipsis; the volume always stays
@@ -169,6 +168,11 @@ Wording: **must** = required for v1.
   answered the FR-018 question yet, and after a guard-rail incident.
 
 ### 5.1 General
+
+The page is in four titled groups: "Startup and language" (FR-074, FR-075), "Devices"
+(FR-072, FR-076), "Icon next to the clock" (FR-078, FR-079, FR-073, FR-081) and "Panel
+and notifications" (FR-082, FR-077).
+
 - **FR-072** Device-switch scope: "media and calls" (default) / "media only" / "calls only".
 - **FR-073** Wheel step: 1–10, default 2. Applies to tray icon and all sliders.
 - **FR-074** Start with Windows: on/off (default on for the installed version; the installer
@@ -180,7 +184,10 @@ Wording: **must** = required for v1.
 - **FR-076** Microphone management: on/off (default on). Off removes the tabs, the inputs
   list in settings, and all microphone entities in Home Assistant.
 - **FR-077** Device-switch notification: on/off (default on).
-- **FR-078** Tray icon style (FR-011).
+- **FR-078** Tray icon, one card of picture choices: three groups side by side (size
+  FR-083, picture FR-011, look FR-084), two tiles each; every tile shows the icon as it
+  would be with that choice and the two others, at the current level and device, on a
+  strip of the taskbar colour. Applied at once.
 - **FR-079** Hide the Windows volume icon (FR-018): off by default; the description under
   the switch always states the risks.
 - **FR-080** Check for updates automatically: on/off (default on). Shown on the About
@@ -190,12 +197,18 @@ Wording: **must** = required for v1.
 - **FR-081** Volume bubble of the wheel and middle click (FR-017): on/off (default on).
 - **FR-082** Flyout height: "Fits the content" (default) or "Whole screen height" (FR-023).
   A choice already saved is kept.
-- **FR-083** Tray icon size: "Same as Windows" (default) or "Large", in both icon styles
-  (FR-011), applied at once. The Windows volume glyph already spans the whole width of
-  the square Windows gives a notification-area icon (the loudest step touches both
-  sides) and Windows shows a larger picture scaled down, so "Large" grows in height
-  only: the same drawing stretched vertically about its middle until the loudest step
+- **FR-083** Tray icon size: "Normal" (default, the size of the Windows icon) or "Large",
+  for every picture (FR-011) and look (FR-084), applied at once. The Windows volume
+  glyph already spans the whole width of the square Windows gives a notification-area
+  icon (the loudest step touches both sides) and Windows shows a larger picture scaled
+  down, so "Large" grows in height only: the same drawing stretched vertically about
+  its middle until the loudest step
   fills the square (DESIGN_SYSTEM §3), strokes and widths unchanged, nothing cut.
+- **FR-084** Tray icon look: "Windows" (default, the Windows volume icon in the
+  taskbar's text colour) or "BetterVolume": the speaker of the application icon (without
+  its two roads) and the waves in a gradient of the Windows accent colour, following
+  accent changes at once, the devices of FR-011 as filled drawings in that gradient. In
+  high contrast the icon keeps the Windows look. A choice already saved is kept.
 
 ### 5.2 Devices
 - **FR-085** Two lists (outputs; inputs when microphone management is on), each row: drag

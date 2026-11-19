@@ -39,7 +39,7 @@ animation effects, text scaling.
 - **Text scaling** 100–225 % enlarges text and the rows holding it; icons keep their size.
 - **Animation effects off**: popups appear and disappear without motion.
 
-## 3. Tray icon (FR-010, FR-011)
+## 3. Tray icon (FR-010, FR-011, FR-083, FR-084)
 
 - Size: the Windows small-icon size at the taskbar's scaling (16 px at 100 %), drawn on a
   16-DIP canvas. Colour: white on a dark taskbar, near-black on a light one; dimmed when
@@ -48,14 +48,29 @@ animation effects, text scaling.
   (three), as Windows 11. Below full volume the waves not reached are drawn too, in
   the "disabled text" colour (`#5DFFFFFF` dark, `#5C000000` light, GrayText in high
   contrast), under the reached ones.
-- Style "with device badge": the speaker part of the Windows glyph (x 0–7 DIP) is replaced
-  by a drawing of the device type — speakers, headphones, headset, display — same place,
-  same width, same 1-DIP stroke, same colour, natural proportions (never stretched); the
-  waves or the cross stay on the right, cut from the Windows glyph at x = 7.55 DIP (middle
-  of the gap). Other device types keep the Windows speaker. Automated pixel tests check,
-  at every Windows scaling, that nothing of the original speaker remains and that the
-  level part is exactly the Windows one.
-- Size "Large" (FR-083): the drawing above (either style) stretched vertically by 20/17
+- Picture "device" (FR-011): the speaker part of the Windows glyph (x 0–7 DIP) is replaced
+  by a drawing of the device type — speakers, headphones, headset, display — in natural
+  proportions (never stretched). To give it room the waves or the cross, cut from the
+  Windows glyph at x = 7.55 DIP (middle of the gap), are scaled to 3/4 about the middle
+  of the icon's right edge (16, 8) (`tray::DEVICE_WAVES_SCALE`), and the device fills
+  the room left of them up to the Windows gap of 1.1 DIP: 8.975 DIP wide
+  (`tray::DEVICE_WIDTH`). Other device types keep the speaker. Automated pixel tests
+  check, at every Windows scaling, that nothing of the original speaker remains, that the
+  device is wider than the speaker, and that no pixel column holds both the device and
+  the waves (a column of nothing between them from 150 %).
+- Look "BetterVolume" (FR-084): the speaker is the one of the application icon (its
+  16–32 px drawing, without the two roads), filled, fitted in the Windows speaker's place
+  (x 0–7 DIP, centred on y = 8); the waves and the cross keep the Windows glyph shapes.
+  Everything is painted with a linear gradient of accent shades, top to bottom
+  (`TrayColors::accent`): accent light 3 to the accent on a dark taskbar, the accent to
+  accent dark 2 on a light one; the waves not reached are a pale accent (accent light 2
+  at 32 % on a dark taskbar, dark 1 at 32 % on a light one). Devices are filled drawings
+  in the gradient (the speaker cabinet with its drivers cut out, a thick headband and
+  filled cups, a full screen). Without a device the icon is dimmed as in the Windows
+  look. High contrast draws the Windows look (system colours only). Pixel tests check the
+  colours follow the accent, the gradient, the pale waves, the speaker's place and the
+  high-contrast fallback. Look "Windows": as above, the Windows glyph in one colour.
+- Size "Large" (FR-083): the drawing above (any picture and look) stretched vertically by 20/17
   about y = 8 DIP (`tray::LARGE_STRETCH`): the loudest step's outer wave (1.25 to
   14.75 DIP) then spans 0.06 to 15.94 DIP. Widths, strokes and the level cut are
   unchanged. Inside the stretch, icon glyphs are drawn without grid fitting and without
@@ -122,7 +137,7 @@ it (`bv-shell/src/popup.rs`). Values compared with the system flyouts.
 ## 7. Gallery
 
 `cargo run -p bv-ui-kit --example gallery -- <folder>` renders the tray icons (every
-scaling, both taskbar colours, both styles, both sizes), an icon-font sheet and the menu (both modes,
+scaling, both taskbar colours, both pictures, both looks (`-bv`), both sizes), an icon-font sheet and the menu (both modes,
 100/150/225 %) to PNG files through the real backend, for visual checks. The language
 sheets (`bv-app`, test `language_sheets`, run with `--ignored` and `BV_SHEETS=<folder>`)
 draw every window of the application in every shipped language with the real views.
@@ -269,6 +284,31 @@ name", 0 to 100, small change 1, large change 10), footer buttons. Menu: menu, m
 - Accessibility: pane, navigation list of list items, a group per card (name = title,
   help = description) holding a toggle button, a combo box (expand/collapse, its choices
   as list items) or a hyperlink.
+
+### 17.0 Picture choices (FR-078, FR-083, FR-084)
+
+A card of picture choices, after the Start layout choice of Windows 11: the card's icon,
+title and description, then groups side by side from the card's left padding, each a
+label (Body) over a row of tiles; a group that does not fit goes to the next row.
+
+| Token | Value (DIP) |
+|---|---|
+| Tile: least width / picture height | 76 / 52 (wider for a long label, all tiles of a group alike) |
+| Tile: padding / gap picture to label / picture corner radius | 4 / 6 / 4 |
+| Label padding (left and right) | 6; the label (Body, centred) wraps on 2 lines at most |
+| Icon on a tile | 32 (the tray icon at twice its taskbar size, `tray::paint_in`) |
+| Gaps: tiles / groups side by side / rows of groups | 4 / 20 / 16 |
+| Gaps: under the card text / under a group label | 16 / 8 |
+
+The picture is a strip of the taskbar colour (`TrayColors::taskbar`: `#1C1C1C` dark,
+`#EEEEEE` light, the window colour in high contrast) with a 1-DIP card outline. The chosen
+tile has the subtle hover fill and a 2-DIP accent outline (as the cells of the icon
+picker); the others a 1-DIP card outline, the hover or pressed fill under the pointer.
+Each group is one Tab stop (a radio group): the arrows move to the tile before or after
+and choose it, Home and End the first and last; screen readers see each group as a list
+whose items are the tiles, the chosen one selected. The three groups of the tray icon
+fit side by side at the window's default size in every shipped language (tested with the
+real text measures).
 
 ### 17.1 Device lists (FR-085 to FR-089)
 

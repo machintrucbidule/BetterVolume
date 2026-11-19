@@ -155,8 +155,9 @@ pub struct Theme {
     pub focus_inner: Color,
     /// Background of popup surfaces (flyout, menu).
     pub material: Material,
-    /// Colour of the tray icon glyph (follows the taskbar).
-    pub tray_glyph: Color,
+    /// Colours of the tray icon: they follow the taskbar (the Windows system mode) on
+    /// every surface, so the settings window can show the icon as it looks there.
+    pub tray: TrayColors,
     /// Colours of the flyout controls (tiles, sliders, tabs, footer, tooltip).
     pub controls: ControlColors,
     /// Colours of application windows (settings window).
@@ -165,6 +166,60 @@ pub struct Theme {
     pub text_scale: f32,
     /// Whether transitions are animated (Windows "Animation effects").
     pub animations: bool,
+}
+
+/// Colours of the tray icon (FR-010, FR-011, FR-084), for the taskbar it sits on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TrayColors {
+    /// The Windows look: the glyph (white on a dark taskbar, black on a light one).
+    pub glyph: Color,
+    /// The Windows look: waves not reached (the Windows 11 "disabled text" colour).
+    pub unreached: Color,
+    /// The BetterVolume look: its gradient, top to bottom, made of accent shades (lighter
+    /// on a dark taskbar).
+    pub accent: [Color; 2],
+    /// The BetterVolume look: waves not reached, a pale accent.
+    pub accent_unreached: Color,
+    /// The taskbar behind the icon (pictures of the icon in the settings window).
+    pub taskbar: Color,
+    /// A high-contrast theme is active: only system colours, so the BetterVolume look
+    /// is drawn in the Windows look.
+    pub high_contrast: bool,
+}
+
+impl TrayColors {
+    /// The colours for the taskbar of `inputs` (its system mode, accent and contrast).
+    pub fn for_taskbar(inputs: &ThemeInputs) -> TrayColors {
+        if let Some(hc) = inputs.high_contrast {
+            return TrayColors {
+                glyph: hc.window_text,
+                unreached: hc.gray_text,
+                accent: [hc.window_text; 2],
+                accent_unreached: hc.gray_text,
+                taskbar: hc.window,
+                high_contrast: true,
+            };
+        }
+        let a = inputs.accent.unwrap_or(AccentPalette::DEFAULT);
+        match inputs.system_mode {
+            ThemeMode::Dark => TrayColors {
+                glyph: Color::WHITE,
+                unreached: Color::argb(0x5DFF_FFFF),
+                accent: [a.light3, a.base],
+                accent_unreached: a.light2.with_alpha(0.32),
+                taskbar: Color::rgb(0x1C1C1C),
+                high_contrast: false,
+            },
+            ThemeMode::Light => TrayColors {
+                glyph: Color::argb(0xE400_0000),
+                unreached: Color::argb(0x5C00_0000),
+                accent: [a.base, a.dark2],
+                accent_unreached: a.dark1.with_alpha(0.32),
+                taskbar: Color::rgb(0xEEEEEE),
+                high_contrast: false,
+            },
+        }
+    }
 }
 
 /// Colours of the flyout controls: WinUI 3 control fills, strokes and slider resources.
@@ -271,7 +326,7 @@ impl Theme {
         let text_scale = inputs.text_scale.clamp(1.0, 2.25);
         let animations = inputs.animations;
         if let Some(hc) = inputs.high_contrast {
-            return Theme::high_contrast(&hc, text_scale, animations);
+            return Theme::high_contrast(&hc, inputs, text_scale, animations);
         }
         let accent = inputs.accent.unwrap_or(AccentPalette::DEFAULT);
         let transparency = inputs.transparency;
@@ -303,7 +358,7 @@ impl Theme {
                 } else {
                     Material::Solid(Color::rgb(0x202020))
                 },
-                tray_glyph: Color::WHITE,
+                tray: TrayColors::for_taskbar(inputs),
                 controls: ControlColors {
                     fill: Color::argb(0x0FFF_FFFF),
                     fill_hover: Color::argb(0x15FF_FFFF),
@@ -378,7 +433,7 @@ impl Theme {
                 } else {
                     Material::Solid(Color::rgb(0xEEEEEE))
                 },
-                tray_glyph: Color::argb(0xE400_0000),
+                tray: TrayColors::for_taskbar(inputs),
                 controls: ControlColors {
                     fill: Color::argb(0xB3FF_FFFF),
                     fill_hover: Color::argb(0x80F9_F9F9),
@@ -432,7 +487,12 @@ impl Theme {
         }
     }
 
-    fn high_contrast(hc: &HighContrastColors, text_scale: f32, animations: bool) -> Theme {
+    fn high_contrast(
+        hc: &HighContrastColors,
+        inputs: &ThemeInputs,
+        text_scale: f32,
+        animations: bool,
+    ) -> Theme {
         // High contrast: only the user's system colours, opaque surfaces, solid outlines.
         // Light or dark follows the high-contrast background, whatever the Windows mode.
         let mode = if hc.window.luminance() < 0.5 { ThemeMode::Dark } else { ThemeMode::Light };
@@ -453,7 +513,7 @@ impl Theme {
             focus_outer: hc.window_text,
             focus_inner: hc.window,
             material: Material::Solid(hc.window),
-            tray_glyph: hc.window_text,
+            tray: TrayColors::for_taskbar(inputs),
             controls: ControlColors {
                 fill: hc.button_face,
                 fill_hover: hc.highlight,
@@ -522,8 +582,11 @@ mod tests {
             ..ThemeInputs::default()
         };
         assert_eq!(Theme::shell(&inputs).mode, ThemeMode::Dark);
-        assert_eq!(Theme::shell(&inputs).tray_glyph, Color::WHITE);
+        assert_eq!(Theme::shell(&inputs).tray.glyph, Color::WHITE);
         assert_eq!(Theme::app(&inputs).mode, ThemeMode::Light);
+        // The settings window shows the tray icon as it looks on the taskbar.
+        assert_eq!(Theme::app(&inputs).tray, Theme::shell(&inputs).tray);
+        assert_eq!(Theme::app(&inputs).tray.taskbar, Color::rgb(0x1C1C1C));
     }
 
     #[test]
@@ -538,6 +601,14 @@ mod tests {
         assert_eq!(Theme::shell(&inputs).accent_fill, Color::rgb(0x00FF00));
         inputs.accent = None;
         assert_eq!(Theme::shell(&inputs).accent_fill, AccentPalette::DEFAULT.dark1);
+        // The BetterVolume tray look (FR-084): lighter shades on a dark taskbar.
+        let a = AccentPalette::DEFAULT;
+        inputs.system_mode = ThemeMode::Dark;
+        assert_eq!(Theme::shell(&inputs).tray.accent, [a.light3, a.base]);
+        assert_eq!(Theme::shell(&inputs).tray.accent_unreached, a.light2.with_alpha(0.32));
+        inputs.system_mode = ThemeMode::Light;
+        assert_eq!(Theme::shell(&inputs).tray.accent, [a.base, a.dark2]);
+        assert_eq!(Theme::shell(&inputs).tray.accent_unreached, a.dark1.with_alpha(0.32));
     }
 
     #[test]
@@ -565,7 +636,9 @@ mod tests {
         assert_eq!(theme.material, Material::Solid(Color::BLACK));
         assert_eq!(theme.text_primary, Color::WHITE);
         assert_eq!(theme.subtle_hover, hc().highlight);
-        assert_eq!(theme.tray_glyph, Color::WHITE);
+        assert_eq!(theme.tray.glyph, Color::WHITE);
+        assert!(theme.tray.high_contrast);
+        assert_eq!(theme.tray.accent, [Color::WHITE; 2]);
         assert_eq!(theme.mode, ThemeMode::Dark, "a black high-contrast theme counts as dark");
         // A white high-contrast theme counts as light even when Windows is in dark mode.
         let white = HighContrastColors { window: Color::WHITE, window_text: Color::BLACK, ..hc() };

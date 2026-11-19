@@ -2,6 +2,7 @@
   "_comment": "Footprint budget. Source of truth: docs/ARCHITECTURE.md section 2 (keep both in sync). RAM = private working set after the idle period. idle_cpu_tolerance_ms sits just under the resolution of the process CPU clock (one scheduler tick = 15.6 ms): the measured CPU time over the whole idle period must be strictly below it, so a single tick already fails.",
   "idle_never_opened_private_mb": { "budget": 5, "target": 3 },
   "idle_used_ha_on_private_mb": { "budget": 12, "target": 8 },
+  "settings_closed_private_mb": { "budget": 6, "target": 5 },
   "idle_cpu_ms_per_min": { "budget": 0 },
   "idle_cpu_tolerance_ms": 15,
   "open_first_ms": { "budget": 80 },

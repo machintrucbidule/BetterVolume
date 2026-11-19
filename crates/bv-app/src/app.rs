@@ -11,10 +11,10 @@
 use bv_audio::{AudioEngine, AudioError, Changes, Endpoint, Flow, Role};
 use bv_core::audio::FormFactor;
 use bv_core::i18n::{Language, Msg};
-use bv_core::settings::{Settings, TrayIconSize, TrayIconStyle, WindowPlacement};
+use bv_core::settings::{Settings, TrayIconLook, TrayIconSize, TrayIconStyle, WindowPlacement};
 use bv_core::text::ellipsize;
 use bv_core::{devices, volume};
-use bv_ui_kit::controls::tray::{DeviceType, TrayIcon};
+use bv_ui_kit::controls::tray::{DeviceType, TrayIcon, TrayLook};
 use bv_ui_kit::icons::VolumeLevel;
 
 use bv_shell::TOOLTIP_MAX_UNITS;
@@ -190,19 +190,35 @@ impl<E: AudioEngine> App<E> {
         self.engine.endpoint(Flow::Output).cloned()
     }
 
-    /// What the tray icon shows (FR-010, FR-011, FR-083): the volume step of the current
-    /// output, in the "with device badge" style its type, and the chosen size.
+    /// What the tray icon shows (FR-010, FR-011, FR-083, FR-084): the volume step of the
+    /// current output, with the picture "device" its type, the chosen size and look.
     pub fn tray_icon(&self) -> TrayIcon {
-        let large = self.settings.general.tray_icon_size == TrayIconSize::Large;
+        let g = &self.settings.general;
+        self.tray_icon_with(g.tray_icon_style, g.tray_icon_size, g.tray_icon_look)
+    }
+
+    /// What the tray icon would show with these choices (the pictures of the settings
+    /// window show each choice with the two others).
+    pub(crate) fn tray_icon_with(
+        &self,
+        picture: TrayIconStyle,
+        size: TrayIconSize,
+        look: TrayIconLook,
+    ) -> TrayIcon {
+        let large = size == TrayIconSize::Large;
+        let look = match look {
+            TrayIconLook::Windows => TrayLook::Windows,
+            TrayIconLook::BetterVolume => TrayLook::BetterVolume,
+        };
         let Some(current) = self.engine.default_device(Flow::Output, Role::Media) else {
-            return TrayIcon { level: None, badge: None, large };
+            return TrayIcon { level: None, badge: None, large, look };
         };
         // A device without volume control shows the full speaker, like Windows.
         let level = match self.engine.endpoint(Flow::Output) {
             Some(e) => volume_level(e.percent(), e.muted),
             None => VolumeLevel::High,
         };
-        let badge = match self.settings.general.tray_icon_style {
+        let badge = match picture {
             TrayIconStyle::SameAsWindows => None,
             TrayIconStyle::WithDeviceBadge => {
                 self.engine.devices(Flow::Output).iter().find(|d| d.id == current).and_then(|d| {
@@ -215,7 +231,7 @@ impl<E: AudioEngine> App<E> {
                 })
             }
         };
-        TrayIcon { level: Some(level), badge, large }
+        TrayIcon { level: Some(level), badge, large, look }
     }
 
     /// The tray tooltip (FR-012): `<display name>: <volume>%`, `<display name>: muted`, or
@@ -539,13 +555,18 @@ mod tests {
         let mut app = english(speakers());
         assert_eq!(
             app.tray_icon(),
-            TrayIcon { level: Some(VolumeLevel::Medium), badge: None, large: false }
+            TrayIcon {
+                level: Some(VolumeLevel::Medium),
+                badge: None,
+                large: false,
+                look: TrayLook::Windows
+            }
         );
         app.toggle_output_mute();
         assert_eq!(app.tray_icon().level, Some(VolumeLevel::Muted));
         assert_eq!(
             english(FakeEngine::new()).tray_icon(),
-            TrayIcon { level: None, badge: None, large: false }
+            TrayIcon { level: None, badge: None, large: false, look: TrayLook::Windows }
         );
     }
 
@@ -564,12 +585,16 @@ mod tests {
             TrayIcon {
                 level: Some(VolumeLevel::High),
                 badge: Some(DeviceType::Headphones),
-                large: false
+                large: false,
+                look: TrayLook::Windows
             }
         );
         // Same device, default style: no badge.
-        let app = english(app.engine);
+        let mut app = english(app.engine);
         assert_eq!(app.tray_icon().badge, None);
+        // The BetterVolume look (FR-084).
+        app.settings.general.tray_icon_look = TrayIconLook::BetterVolume;
+        assert_eq!(app.tray_icon().look, TrayLook::BetterVolume);
     }
 
     #[test]

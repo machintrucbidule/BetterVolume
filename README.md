@@ -9,7 +9,7 @@
 [![MIT licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 [![Windows 11](https://img.shields.io/badge/Windows-11-0078D4?logo=windows11&logoColor=white)](#requirements)
 [![Made with Rust](https://img.shields.io/badge/made%20with-Rust-B7410E?logo=rust&logoColor=white)](#building-from-source)
-[![About 3 MB of memory when idle](https://img.shields.io/badge/idle%20memory-~3%20MB-2EA44F)](#features)
+[![About 8 MB of memory](https://img.shields.io/badge/memory-~8%20MB-2EA44F)](#memory)
 
 **The volume panel Windows 11 should have had.** One click on the tray icon to switch
 between your speakers, headset and TV and set each application's volume, in a panel that
@@ -28,8 +28,10 @@ Home Assistant.
   a microphone view (input device, level, mute) that can be turned off.
 - **From the tray icon.** The icon shows the volume level; the mouse wheel over it changes
   the volume, a middle click mutes, a right click opens the Windows sound screens and the
-  settings. It can be enlarged to take the same room as the icons next to it, and can
-  show the current device (speakers, headphones, headset, TV) in place of the speaker.
+  settings. Three choices, each shown as a picture of the result in the settings: its
+  size (normal, or large to take the same room as the icons next to it), its picture
+  (the speaker, or the device playing now: speakers, headphones, headset, TV) and its
+  style (identical to Windows, or the BetterVolume style in your Windows accent colour).
 - **Looks like Windows 11.** The panel, the settings window and the small bubble shown
   when the device changes follow the Windows 11 design, light or dark theme and accent
   colour, and work with the keyboard and screen readers.
@@ -43,9 +45,9 @@ Home Assistant.
   can then, for example, switch the sound to the TV when it turns on, raise the volume
   while the robot vacuum runs, or lower it when someone rings at the door.
 - **Can replace the Windows volume icon** (optional, off by default, see below).
-- **Light.** A few megabytes of memory (about 3 MB at rest, about 7 to 10 MB once the panel
-  has been used with Home Assistant on), and practically no processor time while it waits
-  (it only reacts to events).
+- **Light.** A few megabytes of memory (about 3 MB just started, about 6 to 8 MB once
+  the panel has been used; [details](#memory)), and practically no processor time while
+  it waits (it only reacts to events).
 - In English, French, German, Spanish, Italian, Portuguese (Brazil), Dutch, Polish,
   Japanese and Simplified Chinese; it follows the Windows display language.
 
@@ -58,11 +60,11 @@ Home Assistant.
 </p>
 
 <p align="center">
-  <img src="docs/images/tray.png" alt="BetterVolume's tray icon at the large size, showing the current output in place of the speaker: bookshelf speakers, then a headset, then a TV, on a dark and a light taskbar" width="438">
+  <img src="docs/images/tray.png" alt="BetterVolume's tray icon at the large size, on a dark and a light taskbar. Top row, the Windows style: the speaker, then the current output in its place (bookshelf speakers, a headset, a TV). Bottom row, the same in the BetterVolume style, in the blue of the Windows accent colour" width="504">
 </p>
 
 <p align="center">
-  <img src="docs/images/settings.png" alt="The BetterVolume settings window, General page: start with Windows, language, microphone management, switch scope, mouse wheel step, notification and volume bubbles, panel height, tray icon style and size, hiding the Windows volume icon" width="735">
+  <img src="docs/images/settings.png" alt="The BetterVolume settings window, General page, in four groups: startup and language; devices (switch scope, microphone management); the icon next to the clock (its size, picture and style as pictures to click, hiding the Windows volume icon, mouse wheel step, volume bubble); panel and notifications" width="795">
 </p>
 
 ## Requirements
@@ -117,6 +119,21 @@ puts the icon back when BetterVolume quits, when the option is turned off, or wh
 uninstalled. A Windows update may stop it working (the Windows icon then simply comes
 back), and some antivirus software may distrust this technique. If the taskbar ever stops
 right after the icon was hidden, the option turns itself off.
+
+## Memory
+
+What Windows Task Manager shows in its *Memory* column, measured on a test PC with the
+release program (the figures vary a little from one PC to another):
+
+| Situation | Memory |
+|---|---|
+| Just started, the panel not opened yet | about 3 MB |
+| After the panel was opened (the drawing engine is kept for instant openings) | about 6 to 8 MB |
+| While the settings window is open | about 11 MB |
+| After the settings window was closed (the drawing engine is rebuilt at the next opening) | about 4 to 5 MB, 7 to 8 MB once the panel is opened again |
+
+Home Assistant adds about half a megabyte. Each version is checked against a memory and
+processor budget before it is released (see [Building from source](#building-from-source)).
 
 ## Updates
 

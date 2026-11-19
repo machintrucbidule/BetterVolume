@@ -71,14 +71,24 @@ pub enum SwitchScope {
     CallsOnly,
 }
 
-/// Tray icon style (FR-011).
+/// Tray icon picture (FR-011): what stands left of the waves.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TrayIconStyle {
-    /// Identical to the Windows volume icon.
+    /// The speaker.
     #[default]
     SameAsWindows,
-    /// With a small marker for the type of the current output.
+    /// A drawing of the type of the current output.
     WithDeviceBadge,
+}
+
+/// Tray icon look (FR-084).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TrayIconLook {
+    /// The Windows volume icon, in the taskbar's text colour.
+    #[default]
+    Windows,
+    /// The speaker of the application icon, in the Windows accent colour.
+    BetterVolume,
 }
 
 /// Tray icon size (FR-083).
@@ -125,6 +135,8 @@ pub struct General {
     pub tray_icon_style: TrayIconStyle,
     /// FR-083.
     pub tray_icon_size: TrayIconSize,
+    /// FR-084.
+    pub tray_icon_look: TrayIconLook,
     /// FR-082.
     pub flyout_height: FlyoutHeight,
     /// FR-079. Off by default.
@@ -151,6 +163,7 @@ impl Default for General {
             volume_bubble: true,
             tray_icon_style: TrayIconStyle::default(),
             tray_icon_size: TrayIconSize::default(),
+            tray_icon_look: TrayIconLook::default(),
             flyout_height: FlyoutHeight::default(),
             hide_windows_volume_icon: false,
             check_updates: true,
@@ -425,6 +438,7 @@ mod tests {
         assert!(general.volume_bubble);
         assert_eq!(general.tray_icon_style, TrayIconStyle::SameAsWindows);
         assert_eq!(general.tray_icon_size, TrayIconSize::SameAsWindows);
+        assert_eq!(general.tray_icon_look, TrayIconLook::Windows);
         assert_eq!(general.flyout_height, FlyoutHeight::Content);
         assert!(!general.hide_windows_volume_icon);
         assert!(general.check_updates);

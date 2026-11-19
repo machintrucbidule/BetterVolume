@@ -232,6 +232,11 @@ impl Pen<'_, '_> {
                     clockwise,
                     large,
                 },
+                Segment::CubicTo { c1, c2, to } => Segment::CubicTo {
+                    c1: self.point(c1.x, c1.y),
+                    c2: self.point(c2.x, c2.y),
+                    to: self.point(to.x, to.y),
+                },
                 Segment::Close => Segment::Close,
             })
             .collect();

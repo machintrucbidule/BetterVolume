@@ -1214,3 +1214,155 @@ fn a_long_notice_title_wraps_above_its_message() {
     assert!(long.layout.notices[0].rect.bottom() >= message.bottom());
     assert_eq!(short.layout.notices[0].title.1, 1);
 }
+
+const PICTURES: SettingKey = SettingKey(20);
+const SIZE: SettingKey = SettingKey(21);
+const PICTURE: SettingKey = SettingKey(22);
+const LOOK: SettingKey = SettingKey(23);
+
+fn picture_card(selected: [usize; 3]) -> Block {
+    use crate::controls::tray::{TrayIcon, TrayLook};
+    let icon = TrayIcon { level: None, badge: None, large: false, look: TrayLook::Windows };
+    let group = |key, label: &str, names: [&str; 2], selected| PictureGroup {
+        key,
+        label: label.into(),
+        tiles: names.iter().map(|n| PictureTile { label: (*n).into(), picture: icon }).collect(),
+        selected,
+    };
+    Block::Pictures(PictureCard {
+        key: PICTURES,
+        icon: Some(Icon::Taskbar),
+        title: "Tray icon".into(),
+        description: Some("Choose how it looks".into()),
+        groups: vec![
+            group(SIZE, "Size", ["Normal", "Large"], selected[0]),
+            group(PICTURE, "Picture", ["Speaker", "Device"], selected[1]),
+            group(LOOK, "Look", ["Windows", "BetterVolume"], selected[2]),
+        ],
+    })
+}
+
+fn with_pictures(selected: [usize; 3]) -> SettingsContent {
+    content(
+        GENERAL,
+        vec![
+            card(AUTOSTART, "Start with Windows", toggle(true)),
+            picture_card(selected),
+            card(LANGUAGE, "Language", choice(0, 3)),
+        ],
+    )
+}
+
+fn tile(v: &SettingsView, key: SettingKey, i: usize) -> Rect {
+    v.layout.on_screen(v.layout.tile(key, i).unwrap())
+}
+
+#[test]
+fn picture_groups_stand_side_by_side_and_wrap_in_a_narrow_window() {
+    // At the window's default size.
+    let (w, h) = t::DEFAULT_SIZE;
+    let v = SettingsView::new(with_pictures([0, 0, 0]), Size::new(w, h), &Fixed, 1.0);
+    let card = &v.layout.pictures[0];
+    let groups = &card.groups;
+    assert_eq!(groups.len(), 3);
+    // Side by side, under the card's text, inside the card.
+    let text_bottom = card.description.unwrap().0.bottom();
+    for g in groups {
+        assert!(g.label.y >= text_bottom);
+        assert_eq!(g.label.y, groups[0].label.y);
+        for r in &g.tiles {
+            assert!(r.y >= g.label.bottom());
+            assert!(r.x >= card.rect.x + t::CARD_PADDING.0);
+            assert!(r.right() <= card.rect.right() - t::CARD_PADDING.0);
+            assert!(r.bottom() <= card.rect.bottom() - t::CARD_PADDING.1 + 0.01);
+            assert!(r.width >= t::PICTURE_TILE.0);
+        }
+        assert!(g.tiles[1].x >= g.tiles[0].right() + t::PICTURE_GAPS.0 - 0.01);
+    }
+    for pair in groups.windows(2) {
+        assert!(pair[1].label.x >= pair[0].tiles[1].right() + t::PICTURE_GAPS.1 - 0.01);
+    }
+    // The cards around keep their place in the flow.
+    assert!(v.layout.cards[1].rect.y >= card.rect.bottom() + t::CARD_GAP - 0.01);
+    // A narrow window puts the groups that do not fit on the next rows.
+    let narrow = SettingsView::new(with_pictures([0, 0, 0]), Size::new(700.0, 600.0), &Fixed, 1.0);
+    let n = &narrow.layout.pictures[0];
+    assert!(n.groups[2].label.y > n.groups[0].tiles[0].bottom());
+    for g in &n.groups {
+        assert!(g.tiles[1].right() <= n.rect.right() - t::CARD_PADDING.0 + 0.01);
+        assert!(g.tiles[1].bottom() <= n.rect.bottom());
+    }
+}
+
+#[test]
+fn a_click_on_a_tile_chooses_it() {
+    let mut v = view(with_pictures([0, 1, 0]));
+    let p = center(tile(&v, LOOK, 1));
+    let r = click(&mut v, p);
+    assert_eq!(r.action, Some(SettingsAction::Choose(LOOK, 1)));
+    assert_eq!(v.focus, Some(Target::Tile(LOOK, 1)));
+    // The chosen tile is already chosen.
+    let p = center(tile(&v, PICTURE, 1));
+    let r = click(&mut v, p);
+    assert_eq!(r.action, None);
+    // Between tiles: nothing.
+    let gap = Point::new(tile(&v, SIZE, 0).right() + 2.0, center(tile(&v, SIZE, 0)).y);
+    assert_eq!(click(&mut v, gap).action, None);
+}
+
+#[test]
+fn each_group_of_tiles_is_one_tab_stop_and_the_arrows_choose() {
+    let mut v = view(with_pictures([1, 0, 0]));
+    v.key(SettingsKey::Tab { back: false }, &Fixed); // navigation
+    v.key(SettingsKey::Tab { back: false }, &Fixed); // autostart
+    v.key(SettingsKey::Tab { back: false }, &Fixed);
+    assert_eq!(v.focus, Some(Target::Tile(SIZE, 1)), "the chosen tile of the first group");
+    v.key(SettingsKey::Tab { back: false }, &Fixed);
+    assert_eq!(v.focus, Some(Target::Tile(PICTURE, 0)));
+    let r = v.key(SettingsKey::Right { select: false }, &Fixed);
+    assert_eq!(r.action, Some(SettingsAction::Choose(PICTURE, 1)));
+    assert!(r.focus_moved);
+    assert_eq!(v.focus, Some(Target::Tile(PICTURE, 1)));
+    v.set_content(with_pictures([1, 1, 0]), &Fixed);
+    // The last tile stays the last: no wrapping into the next group.
+    let r = v.key(SettingsKey::Down, &Fixed);
+    assert_eq!(r.action, None);
+    assert_eq!(v.focus, Some(Target::Tile(PICTURE, 1)));
+    let r = v.key(SettingsKey::Home { select: false }, &Fixed);
+    assert_eq!(r.action, Some(SettingsAction::Choose(PICTURE, 0)));
+    v.set_content(with_pictures([1, 0, 0]), &Fixed);
+    let r = v.key(SettingsKey::End { select: false }, &Fixed);
+    assert_eq!(r.action, Some(SettingsAction::Choose(PICTURE, 1)));
+    v.set_content(with_pictures([1, 1, 0]), &Fixed);
+    v.key(SettingsKey::Tab { back: false }, &Fixed);
+    assert_eq!(v.focus, Some(Target::Tile(LOOK, 0)));
+    v.key(SettingsKey::Tab { back: true }, &Fixed);
+    assert_eq!(v.focus, Some(Target::Tile(PICTURE, 1)));
+    v.key(SettingsKey::Tab { back: false }, &Fixed);
+    v.key(SettingsKey::Tab { back: false }, &Fixed);
+    assert_eq!(v.focus, Some(Target::Control(LANGUAGE)));
+}
+
+#[test]
+fn screen_readers_see_a_list_per_group_and_can_choose_a_tile() {
+    let mut v = view(with_pictures([0, 1, 0]));
+    let tree = v.access_tree(&Fixed);
+    let card = tree.find(ids::CARD | (PICTURES.0 << 4)).unwrap();
+    assert_eq!(card.name, "Tray icon");
+    assert_eq!(card.help.as_deref(), Some("Choose how it looks"));
+    assert_eq!(card.children.len(), 3);
+    let picture = &card.children[1];
+    assert_eq!(picture.role, AccessRole::List);
+    assert_eq!(picture.name, "Picture");
+    let names: Vec<_> = picture.children.iter().map(|c| (c.name.as_str(), c.selected)).collect();
+    assert_eq!(names, [("Speaker", Some(false)), ("Device", Some(true))]);
+    assert!(picture.children.iter().all(|c| c.role == AccessRole::ListItem && c.focusable));
+    let large = ids::TILE | (SIZE.0 << 8) | 1;
+    let r = v.access_action(large, AccessAction::Select, &Fixed);
+    assert_eq!(r.action, Some(SettingsAction::Choose(SIZE, 1)));
+    v.access_action(large, AccessAction::Focus, &Fixed);
+    assert_eq!(v.focused_access_id(), Some(large));
+    // A tile that does not exist is ignored.
+    let r = v.access_action(ids::TILE | (SIZE.0 << 8) | 5, AccessAction::Select, &Fixed);
+    assert_eq!(r.action, None);
+}

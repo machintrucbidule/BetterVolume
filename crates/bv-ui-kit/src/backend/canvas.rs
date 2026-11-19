@@ -1,14 +1,15 @@
 //! The safe drawing surface handed to painters.
 
 use windows::Win32::Graphics::Direct2D::Common::{
-    D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_COLOR_F, D2D1_PIXEL_FORMAT, D2D_RECT_F,
+    D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_COLOR_F, D2D1_GRADIENT_STOP, D2D1_PIXEL_FORMAT, D2D_RECT_F,
 };
 use windows::Win32::Graphics::Direct2D::{
-    ID2D1Factory1, ID2D1RenderTarget, ID2D1SolidColorBrush, D2D1_ANTIALIAS_MODE_ALIASED,
-    D2D1_DRAW_TEXT_OPTIONS_CLIP, D2D1_DRAW_TEXT_OPTIONS_NONE, D2D1_DRAW_TEXT_OPTIONS_NO_SNAP,
-    D2D1_ELLIPSE, D2D1_FEATURE_LEVEL_DEFAULT, D2D1_RENDER_TARGET_PROPERTIES,
-    D2D1_RENDER_TARGET_TYPE_SOFTWARE, D2D1_RENDER_TARGET_USAGE_NONE, D2D1_ROUNDED_RECT,
-    D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE,
+    ID2D1Brush, ID2D1Factory1, ID2D1RenderTarget, ID2D1SolidColorBrush,
+    D2D1_ANTIALIAS_MODE_ALIASED, D2D1_DRAW_TEXT_OPTIONS_CLIP, D2D1_DRAW_TEXT_OPTIONS_NONE,
+    D2D1_DRAW_TEXT_OPTIONS_NO_SNAP, D2D1_ELLIPSE, D2D1_EXTEND_MODE_CLAMP,
+    D2D1_FEATURE_LEVEL_DEFAULT, D2D1_GAMMA_2_2, D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES,
+    D2D1_RENDER_TARGET_PROPERTIES, D2D1_RENDER_TARGET_TYPE_SOFTWARE, D2D1_RENDER_TARGET_USAGE_NONE,
+    D2D1_ROUNDED_RECT, D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE,
 };
 use windows::Win32::Graphics::DirectWrite::{
     DWRITE_MEASURING_MODE_NATURAL, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_TEXT_ALIGNMENT_LEADING,
@@ -43,6 +44,17 @@ fn rect(r: Rect) -> D2D_RECT_F {
     D2D_RECT_F { left: r.x, top: r.y, right: r.right(), bottom: r.bottom() }
 }
 
+/// A linear gradient between two points, in DIPs of the canvas it is used on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Gradient {
+    /// Where the first colour is.
+    pub from: Point,
+    /// Where the last colour is.
+    pub to: Point,
+    /// The colours, from `from` to `to`.
+    pub colors: [Color; 2],
+}
+
 /// Drawing operations in DIPs. Failures inside a frame are reported once, by the
 /// function that ends the frame.
 pub struct Canvas<'a> {
@@ -53,6 +65,8 @@ pub struct Canvas<'a> {
     error: Option<GraphicsError>,
     /// Inside a vertical stretch: icon glyphs are placed exactly, not snapped to pixels.
     exact: bool,
+    /// Inside [`Canvas::with_gradient`]: the brush every drawing uses instead of a colour.
+    gradient: Option<ID2D1Brush>,
 }
 
 impl Canvas<'_> {
@@ -62,10 +76,51 @@ impl Canvas<'_> {
         }
     }
 
-    fn brush(&self, c: Color) -> &ID2D1SolidColorBrush {
+    /// The brush of a drawing in `c`: a solid one, or the gradient set by
+    /// [`Canvas::with_gradient`] at the opacity of `c`.
+    fn brush(&self, c: Color) -> ID2D1Brush {
+        if let Some(gradient) = &self.gradient {
+            // SAFETY: plain setter on our own brush.
+            unsafe { gradient.SetOpacity(c.a) };
+            return gradient.clone();
+        }
         // SAFETY: plain setter on our own brush.
         unsafe { self.brush.SetColor(&color(c)) };
-        &self.brush
+        (*self.brush).clone()
+    }
+
+    /// Runs `draw` with every drawing painted with `gradient` instead of its colour (the
+    /// colour's opacity still applies).
+    pub fn with_gradient(&mut self, gradient: &Gradient, draw: impl FnOnce(&mut Self)) {
+        let stops = gradient
+            .colors
+            .iter()
+            .enumerate()
+            .map(|(i, c)| D2D1_GRADIENT_STOP {
+                position: i as f32 / (gradient.colors.len() - 1) as f32,
+                color: color(*c),
+            })
+            .collect::<Vec<_>>();
+        let properties = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
+            startPoint: Vector2 { X: gradient.from.x, Y: gradient.from.y },
+            endPoint: Vector2 { X: gradient.to.x, Y: gradient.to.y },
+        };
+        // SAFETY: plain creations on a valid render target; `stops` outlives the call.
+        let brush = unsafe {
+            self.target
+                .CreateGradientStopCollection(&stops, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP)
+                .and_then(|collection| {
+                    self.target.CreateLinearGradientBrush(&properties, None, &collection)
+                })
+        };
+        match brush {
+            Ok(brush) => {
+                let previous = self.gradient.replace((*brush).clone());
+                draw(self);
+                self.gradient = previous;
+            }
+            Err(error) => self.keep(Err(error.into())),
+        }
     }
 
     /// Windows text scaling factor this canvas draws text at.
@@ -94,6 +149,25 @@ impl Canvas<'_> {
     /// their vertical extremes by up to half a pixel, past the edge of a drawing that fills
     /// its height).
     pub fn stretched_vertically(&mut self, factor: f32, centre: f32, draw: impl FnOnce(&mut Self)) {
+        self.scaled(1.0, factor, Point::new(0.0, centre), draw);
+    }
+
+    /// Runs `draw` with everything scaled by `sx` horizontally and `sy` vertically about
+    /// the point `about` (DIPs). Icon glyphs are drawn there without grid fitting, as in
+    /// [`Canvas::stretched_vertically`].
+    pub fn scaled(&mut self, sx: f32, sy: f32, about: Point, draw: impl FnOnce(&mut Self)) {
+        self.exactly([sx, sy], [about.x * (1.0 - sx), about.y * (1.0 - sy)], draw);
+    }
+
+    /// Runs `draw` scaled by `scale` with its origin moved to `origin` (DIPs): a drawing
+    /// made for a square of `n` DIPs fills the square of `n · scale` DIPs at `origin`.
+    /// Icon glyphs are drawn there without grid fitting, as in [`Canvas::scaled`].
+    pub fn placed(&mut self, origin: Point, scale: f32, draw: impl FnOnce(&mut Self)) {
+        self.exactly([scale, scale], [origin.x, origin.y], draw);
+    }
+
+    /// Runs `draw` transformed (see `transformed`), icon glyphs placed exactly.
+    fn exactly(&mut self, scale: [f32; 2], shift: [f32; 2], draw: impl FnOnce(&mut Self)) {
         // SAFETY: plain getter; an error means "no parameters set" (the default ones).
         let previous = unsafe { self.target.GetTextRenderingParams() }.ok();
         let exact = self.graphics.ungridded_text_params();
@@ -102,7 +176,7 @@ impl Canvas<'_> {
             unsafe { self.target.SetTextRenderingParams(params) };
         }
         let was_exact = std::mem::replace(&mut self.exact, true);
-        self.vertically(factor, centre * (1.0 - factor), draw);
+        self.transformed(scale, shift, draw);
         self.exact = was_exact;
         if exact.is_some() {
             // SAFETY: as above.
@@ -114,20 +188,22 @@ impl Canvas<'_> {
     /// nothing of it is cut).
     #[cfg(test)]
     pub(crate) fn shifted_down(&mut self, dy: f32, draw: impl FnOnce(&mut Self)) {
-        self.vertically(1.0, dy, draw);
+        self.transformed([1.0, 1.0], [0.0, dy], draw);
     }
 
-    /// Runs `draw` with `y' = factor·y + shift` applied before the current transform.
-    fn vertically(&mut self, factor: f32, shift: f32, draw: impl FnOnce(&mut Self)) {
+    /// Runs `draw` with `x' = scale[0]·x + shift[0]`, `y' = scale[1]·y + shift[1]` applied
+    /// before the current transform.
+    fn transformed(&mut self, scale: [f32; 2], shift: [f32; 2], draw: impl FnOnce(&mut Self)) {
         let mut current = Matrix3x2::default();
         // SAFETY: plain call inside BeginDraw/EndDraw with a valid out-pointer.
         unsafe { self.target.GetTransform(&mut current) };
         let changed = Matrix3x2 {
-            M21: factor * current.M21,
-            M22: factor * current.M22,
-            M31: shift * current.M21 + current.M31,
-            M32: shift * current.M22 + current.M32,
-            ..current
+            M11: scale[0] * current.M11,
+            M12: scale[0] * current.M12,
+            M21: scale[1] * current.M21,
+            M22: scale[1] * current.M22,
+            M31: shift[0] * current.M11 + shift[1] * current.M21 + current.M31,
+            M32: shift[0] * current.M12 + shift[1] * current.M22 + current.M32,
         };
         // SAFETY: plain calls inside BeginDraw/EndDraw; the transform is restored below
         // (draw cannot change it: no such method).
@@ -383,7 +459,8 @@ pub(crate) fn draw(
         target.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
         target.BeginDraw();
     }
-    let mut canvas = Canvas { target, graphics, brush, text_scale, error: None, exact: false };
+    let mut canvas =
+        Canvas { target, graphics, brush, text_scale, error: None, exact: false, gradient: None };
     paint(&mut canvas);
     let error = canvas.error.take();
     drop(canvas);

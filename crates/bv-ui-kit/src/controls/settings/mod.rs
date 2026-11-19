@@ -23,8 +23,8 @@ mod tests;
 
 pub use content::{
     Block, Button, Card, CardControl, CloseQuestion, DeviceRow, DeviceTexts, NavEntry, Notice,
-    PageKey, Question, RowPicture, SettingKey, SettingsAction, SettingsContent, Severity,
-    TextField,
+    PageKey, PictureCard, PictureGroup, PictureTile, Question, RowPicture, SettingKey,
+    SettingsAction, SettingsContent, Severity, TextField,
 };
 
 use crate::access::{AccessAction, AccessNode, AccessRole};
@@ -162,6 +162,8 @@ enum Target {
     Row(SettingKey, Part),
     /// A cell of the icon picker (0 = automatic, then the catalogue).
     Cell(usize),
+    /// A tile of a group of pictures: the group's key, the tile's index.
+    Tile(SettingKey, usize),
     /// The confirm button of the confirmation flyout.
     ConfirmOk,
     /// Its cancel button.
@@ -253,6 +255,8 @@ mod ids {
     pub const OPTION: u64 = 3 << 32;
     pub const ROW: u64 = 4 << 32;
     pub const CELL: u64 = 5 << 32;
+    pub const TILE: u64 = 7 << 32;
+    pub const PICTURE_GROUP: u64 = 8 << 32;
 }
 
 impl SettingsView {
@@ -531,6 +535,12 @@ impl SettingsView {
         if let Some(target) = self.button_hit(p) {
             return Some(target);
         }
+        for group in self.layout.pictures.iter().flat_map(|c| &c.groups) {
+            if let Some(i) = group.tiles.iter().position(|r| self.layout.on_screen(*r).contains(p))
+            {
+                return Some(Target::Tile(group.key, i));
+            }
+        }
         self.content.cards().zip(&self.layout.cards).find_map(|(card, laid)| {
             let control = self.layout.on_screen(laid.control?);
             (control.contains(p) && usable(&self.content, card.key))
@@ -642,7 +652,11 @@ impl SettingsView {
                 }
             }
             Some(
-                target @ (Target::Nav(_) | Target::Control(_) | Target::Row(..) | Target::Cell(_)),
+                target @ (Target::Nav(_)
+                | Target::Control(_)
+                | Target::Row(..)
+                | Target::Cell(_)
+                | Target::Tile(..)),
             ) => {
                 if self.focus != Some(target) {
                     self.focus = Some(target);
@@ -732,6 +746,11 @@ impl SettingsView {
             Target::Option(i) => self.choose(i),
             Target::Row(key, part) => self.activate_row(key, part, measure),
             Target::Cell(i) => self.pick(i, measure),
+            Target::Tile(key, i) => {
+                let group = self.content.picture_group(key)?;
+                (i < group.tiles.len() && i != group.selected)
+                    .then_some(SettingsAction::Choose(key, i))
+            }
             Target::ConfirmOk => {
                 let key = self.confirm.take()?;
                 self.focus = None;
@@ -813,6 +832,17 @@ impl SettingsView {
                 Block::Notice(notice) if notice.action.is_some() => {
                     stops.push(Target::Control(notice.key));
                 }
+                // One stop per group (a radio group): the tile with the focus, or the
+                // chosen one.
+                Block::Pictures(card) => {
+                    for group in card.groups.iter().filter(|g| !g.tiles.is_empty()) {
+                        let index = match self.focus {
+                            Some(Target::Tile(key, i)) if key == group.key => i,
+                            _ => group.selected.min(group.tiles.len() - 1),
+                        };
+                        stops.push(Target::Tile(group.key, index));
+                    }
+                }
                 Block::Device(row) => {
                     let key = row.key;
                     if row.has_icon_button() {
@@ -844,6 +874,7 @@ impl SettingsView {
             Target::Control(key) => self.card_layout(key).map(|c| c.rect),
             Target::Row(key, _) => self.layout.row(key).map(|r| r.rect),
             Target::Cell(i) => self.layout.picker.as_ref().and_then(|p| p.cells.get(i).copied()),
+            Target::Tile(key, i) => self.layout.tile(key, i),
             _ => None,
         };
         let Some(rect) = rect else { return };
@@ -900,6 +931,11 @@ impl SettingsView {
         }
         if let Some(Target::Cell(i)) = self.focus {
             if let Some(response) = self.picker_key(i, key, measure) {
+                return response;
+            }
+        }
+        if let Some(Target::Tile(group, i)) = self.focus {
+            if let Some(response) = self.tile_key(group, i, key) {
                 return response;
             }
         }
@@ -1008,6 +1044,31 @@ impl SettingsView {
         response
     }
 
+    /// A key on a tile of a group of pictures (a radio group): the arrows move to the
+    /// tile before or after and choose it, Home and End to the first and last; Enter and
+    /// Space choose the tile with the focus.
+    fn tile_key(
+        &mut self,
+        key: SettingKey,
+        index: usize,
+        pressed: SettingsKey,
+    ) -> Option<Response> {
+        let group = self.content.picture_group(key)?;
+        let last = group.tiles.len().checked_sub(1)?;
+        let next = match pressed {
+            SettingsKey::Left { .. } | SettingsKey::Up => index.saturating_sub(1),
+            SettingsKey::Right { .. } | SettingsKey::Down => (index + 1).min(last),
+            SettingsKey::Home { .. } => 0,
+            SettingsKey::End { .. } => last,
+            SettingsKey::Enter | SettingsKey::Space => index.min(last),
+            _ => return None,
+        };
+        let action = (next != group.selected).then_some(SettingsAction::Choose(key, next));
+        let mut response = self.focus_on(Target::Tile(key, next));
+        response.action = action;
+        Some(response)
+    }
+
     fn scroll_by(&mut self, delta: f32) -> Response {
         let before = self.layout.scroll;
         self.layout.scroll_to(before + delta);
@@ -1112,6 +1173,7 @@ impl SettingsView {
         let mut headers = self.layout.headers.iter();
         let mut texts = self.layout.texts.iter();
         let mut cards = self.layout.cards.iter();
+        let mut pictures = self.layout.pictures.iter();
         for (index, block) in self.content.blocks.iter().enumerate() {
             match block {
                 Block::Header(text) | Block::Text(text) => {
@@ -1139,6 +1201,11 @@ impl SettingsView {
                 }
                 Block::Notice(_) | Block::Buttons(_) => {
                     page.children.extend(self.button_nodes(block));
+                }
+                Block::Pictures(card) => {
+                    if let Some(laid) = pictures.next() {
+                        page.children.push(self.pictures_node(card, laid));
+                    }
                 }
             }
         }
@@ -1215,6 +1282,40 @@ impl SettingsView {
         node.focusable = true;
         group.children.push(node);
         group
+    }
+
+    /// A card of pictures: a group holding, for each group of tiles, a list whose items
+    /// are the tiles (the chosen one selected).
+    fn pictures_node(&self, card: &PictureCard, laid: &layout::PicturesLayout) -> AccessNode {
+        let mut node = AccessNode::new(
+            ids::CARD | (card.key.0 << 4),
+            AccessRole::Group,
+            card.title.clone(),
+            self.layout.on_screen(laid.rect),
+        );
+        node.help = card.description.clone();
+        for (group, rects) in card.groups.iter().zip(&laid.groups) {
+            let bounds = rects.tiles.iter().fold(rects.label, |all, r| all.union(*r));
+            let mut list = AccessNode::new(
+                ids::PICTURE_GROUP | (group.key.0 << 4),
+                AccessRole::List,
+                group.label.clone(),
+                self.layout.on_screen(bounds),
+            );
+            for (i, (tile, rect)) in group.tiles.iter().zip(&rects.tiles).enumerate() {
+                let mut item = AccessNode::new(
+                    ids::TILE | (group.key.0 << 8) | i as u64,
+                    AccessRole::ListItem,
+                    tile.label.clone(),
+                    self.layout.on_screen(*rect),
+                );
+                item.selected = Some(i == group.selected);
+                item.focusable = true;
+                list.children.push(item);
+            }
+            node.children.push(list);
+        }
+        node
     }
 
     /// The identifier of the element that has the keyboard focus, if any.
@@ -1341,6 +1442,7 @@ impl SettingsView {
                 target @ (Target::Nav(_)
                 | Target::Row(..)
                 | Target::Cell(_)
+                | Target::Tile(..)
                 | Target::ConfirmOk
                 | Target::ConfirmCancel),
             ) => {
@@ -1390,6 +1492,7 @@ impl SettingsView {
                 let key = SettingKey(low >> 8);
                 self.picker.filter(|p| p.key == key).map(|_| Target::Cell((low & 0xFF) as usize))
             }
+            7 => Some(Target::Tile(SettingKey(low >> 8), (low & 0xFF) as usize)),
             _ => None,
         }
     }
@@ -1412,6 +1515,7 @@ fn target_id(target: Target, picker: Option<Picker>) -> Option<u64> {
             Some(ids::ROW | (key.0 << 4) | code)
         }
         Target::Cell(i) => picker.map(|p| ids::CELL | (p.key.0 << 8) | i as u64),
+        Target::Tile(key, i) => Some(ids::TILE | (key.0 << 8) | i as u64),
         Target::ConfirmOk => Some(ids::CONFIRM_OK),
         Target::ConfirmCancel => Some(ids::CONFIRM_CANCEL),
         Target::Option(_) | Target::Thumb => None,
@@ -1449,6 +1553,7 @@ fn exists(
             _ => true,
         }),
         Target::Cell(i) => layout.picker.as_ref().is_some_and(|p| i < p.cells.len()),
+        Target::Tile(key, i) => content.picture_group(key).is_some_and(|g| i < g.tiles.len()),
         Target::ConfirmOk | Target::ConfirmCancel => true,
         Target::DialogSave | Target::DialogDiscard | Target::DialogCancel => true,
     }

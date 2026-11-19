@@ -14,12 +14,13 @@ use bv_audio::{AudioEngine, Flow};
 use bv_core::devices;
 use bv_core::i18n::{Language, Msg};
 use bv_core::settings::{
-    FlyoutHeight, SwitchScope, TrayIconSize, TrayIconStyle, WHEEL_STEP_MAX, WHEEL_STEP_MIN,
+    FlyoutHeight, SwitchScope, TrayIconLook, TrayIconSize, TrayIconStyle, WHEEL_STEP_MAX,
+    WHEEL_STEP_MIN,
 };
 use bv_ui_kit::controls::device_icon::DeviceIcon;
 use bv_ui_kit::controls::settings::{
-    Block, Card, CardControl, DeviceRow, DeviceTexts, NavEntry, PageKey, RowPicture, SettingKey,
-    SettingsAction, SettingsContent,
+    Block, Card, CardControl, DeviceRow, DeviceTexts, NavEntry, PageKey, PictureCard, PictureGroup,
+    PictureTile, RowPicture, SettingKey, SettingsAction, SettingsContent,
 };
 use bv_ui_kit::icons::Icon;
 
@@ -67,8 +68,12 @@ enum Setting {
     SwitchNotification,
     VolumeBubble,
     FlyoutHeight,
-    TrayStyle,
+    /// The card of the three tray icon choices (FR-078, FR-083, FR-084).
+    TrayIcon,
+    /// Its groups: size, picture, look.
     TraySize,
+    TrayPicture,
+    TrayLook,
     HideIcon,
     HideIconNotice,
     Version,
@@ -78,7 +83,7 @@ enum Setting {
 }
 
 impl Setting {
-    const ALL: [Setting; 16] = [
+    const ALL: [Setting; 18] = [
         Setting::Autostart,
         Setting::Language,
         Setting::Microphones,
@@ -87,8 +92,10 @@ impl Setting {
         Setting::SwitchNotification,
         Setting::VolumeBubble,
         Setting::FlyoutHeight,
-        Setting::TrayStyle,
+        Setting::TrayIcon,
         Setting::TraySize,
+        Setting::TrayPicture,
+        Setting::TrayLook,
         Setting::HideIcon,
         Setting::HideIconNotice,
         Setting::Version,
@@ -112,14 +119,19 @@ const SCOPES: [(SwitchScope, Msg); 3] = [
     (SwitchScope::CallsOnly, Msg::SettingsScopeCalls),
 ];
 
-const TRAY_STYLES: [(TrayIconStyle, Msg); 2] = [
-    (TrayIconStyle::SameAsWindows, Msg::SettingsTraySame),
-    (TrayIconStyle::WithDeviceBadge, Msg::SettingsTrayBadge),
+const TRAY_PICTURES: [(TrayIconStyle, Msg); 2] = [
+    (TrayIconStyle::SameAsWindows, Msg::SettingsTrayPictureSpeaker),
+    (TrayIconStyle::WithDeviceBadge, Msg::SettingsTrayPictureDevice),
 ];
 
 const TRAY_SIZES: [(TrayIconSize, Msg); 2] = [
-    (TrayIconSize::SameAsWindows, Msg::SettingsTraySizeSame),
+    (TrayIconSize::SameAsWindows, Msg::SettingsTraySizeNormal),
     (TrayIconSize::Large, Msg::SettingsTraySizeLarge),
+];
+
+const TRAY_LOOKS: [(TrayIconLook, Msg); 2] = [
+    (TrayIconLook::Windows, Msg::SettingsTrayLookWindows),
+    (TrayIconLook::BetterVolume, Msg::SettingsTrayLookBettervolume),
 ];
 
 const FLYOUT_HEIGHTS: [(FlyoutHeight, Msg); 2] = [
@@ -418,19 +430,13 @@ impl<E: AudioEngine> App<E> {
                 .collect(),
             selected: usize::from(g.wheel_step.saturating_sub(WHEEL_STEP_MIN)),
         };
-        let style = CardControl::Choice {
-            options: TRAY_STYLES.iter().map(|(_, m)| text(*m)).collect(),
-            selected: TRAY_STYLES.iter().position(|(s, _)| *s == g.tray_icon_style).unwrap_or(0),
-        };
-        let size = CardControl::Choice {
-            options: TRAY_SIZES.iter().map(|(_, m)| text(*m)).collect(),
-            selected: TRAY_SIZES.iter().position(|(s, _)| *s == g.tray_icon_size).unwrap_or(0),
-        };
         let height = CardControl::Choice {
             options: FLYOUT_HEIGHTS.iter().map(|(_, m)| text(*m)).collect(),
             selected: FLYOUT_HEIGHTS.iter().position(|(h, _)| *h == g.flyout_height).unwrap_or(0),
         };
-        let mut cards = vec![
+        let header = |msg| Block::Header(text(msg));
+        let mut blocks = vec![
+            header(Msg::SettingsGroupStartup),
             self.card(
                 Setting::Autostart,
                 Icon::Power,
@@ -445,13 +451,7 @@ impl<E: AudioEngine> App<E> {
                 Some(Msg::SettingsLanguageHelp),
                 self.language_choice(),
             ),
-            self.card(
-                Setting::Microphones,
-                Icon::Microphone,
-                Msg::SettingsMicrophones,
-                Some(Msg::SettingsMicrophonesHelp),
-                self.toggle(g.microphone_enabled),
-            ),
+            header(Msg::SettingsGroupDevices),
             self.card(
                 Setting::Scope,
                 Icon::Speaker,
@@ -460,47 +460,14 @@ impl<E: AudioEngine> App<E> {
                 scope,
             ),
             self.card(
-                Setting::Wheel,
-                Icon::Mouse,
-                Msg::SettingsWheel,
-                Some(Msg::SettingsWheelHelp),
-                wheel,
+                Setting::Microphones,
+                Icon::Microphone,
+                Msg::SettingsMicrophones,
+                Some(Msg::SettingsMicrophonesHelp),
+                self.toggle(g.microphone_enabled),
             ),
-            self.card(
-                Setting::SwitchNotification,
-                Icon::Notification,
-                Msg::SettingsSwitchNotification,
-                Some(Msg::SettingsSwitchNotificationHelp),
-                self.toggle(g.switch_notification),
-            ),
-            self.card(
-                Setting::VolumeBubble,
-                Icon::Volume3,
-                Msg::SettingsVolumeBubble,
-                Some(Msg::SettingsVolumeBubbleHelp),
-                self.toggle(g.volume_bubble),
-            ),
-            self.card(
-                Setting::FlyoutHeight,
-                Icon::PanelHeight,
-                Msg::SettingsFlyoutHeight,
-                Some(Msg::SettingsFlyoutHeightHelp),
-                height,
-            ),
-            self.card(
-                Setting::TrayStyle,
-                Icon::Taskbar,
-                Msg::SettingsTrayStyle,
-                Some(Msg::SettingsTrayStyleHelp),
-                style,
-            ),
-            self.card(
-                Setting::TraySize,
-                Icon::IconSize,
-                Msg::SettingsTraySize,
-                Some(Msg::SettingsTraySizeHelp),
-                size,
-            ),
+            header(Msg::SettingsGroupTray),
+            self.tray_icon_card(),
             // FR-079: the risks are always under the switch.
             Block::Card(Card {
                 key: Setting::HideIcon.key(),
@@ -513,9 +480,97 @@ impl<E: AudioEngine> App<E> {
         ];
         // Why the option turned itself off, next to the switch.
         if let Some(notice) = self.volume_icon_notice(Setting::HideIconNotice.key()) {
-            cards.push(Block::Notice(notice));
+            blocks.push(Block::Notice(notice));
         }
-        cards
+        blocks.extend([
+            self.card(
+                Setting::Wheel,
+                Icon::Mouse,
+                Msg::SettingsWheel,
+                Some(Msg::SettingsWheelHelp),
+                wheel,
+            ),
+            self.card(
+                Setting::VolumeBubble,
+                Icon::Volume3,
+                Msg::SettingsVolumeBubble,
+                Some(Msg::SettingsVolumeBubbleHelp),
+                self.toggle(g.volume_bubble),
+            ),
+            header(Msg::SettingsGroupFlyout),
+            self.card(
+                Setting::FlyoutHeight,
+                Icon::PanelHeight,
+                Msg::SettingsFlyoutHeight,
+                Some(Msg::SettingsFlyoutHeightHelp),
+                height,
+            ),
+            self.card(
+                Setting::SwitchNotification,
+                Icon::Notification,
+                Msg::SettingsSwitchNotification,
+                Some(Msg::SettingsSwitchNotificationHelp),
+                self.toggle(g.switch_notification),
+            ),
+        ]);
+        blocks
+    }
+
+    /// The three choices of the tray icon side by side (FR-078, FR-083, FR-084): each
+    /// tile shows the icon as it would be with that choice and the two others, at the
+    /// current level and device.
+    fn tray_icon_card(&self) -> Block {
+        let g = &self.settings.general;
+        let text = |msg| self.language.text(msg).to_owned();
+        let (picture, size, look) = (g.tray_icon_style, g.tray_icon_size, g.tray_icon_look);
+        let sizes = TRAY_SIZES
+            .iter()
+            .map(|(s, m)| PictureTile {
+                label: text(*m),
+                picture: self.tray_icon_with(picture, *s, look),
+            })
+            .collect();
+        let pictures = TRAY_PICTURES
+            .iter()
+            .map(|(p, m)| PictureTile {
+                label: text(*m),
+                picture: self.tray_icon_with(*p, size, look),
+            })
+            .collect();
+        let looks = TRAY_LOOKS
+            .iter()
+            .map(|(l, m)| PictureTile {
+                label: text(*m),
+                picture: self.tray_icon_with(picture, size, *l),
+            })
+            .collect();
+        let selected = |found: Option<usize>| found.unwrap_or(0);
+        Block::Pictures(PictureCard {
+            key: Setting::TrayIcon.key(),
+            icon: Some(Icon::Taskbar),
+            title: text(Msg::SettingsTrayIcon),
+            description: Some(text(Msg::SettingsTrayIconHelp)),
+            groups: vec![
+                PictureGroup {
+                    key: Setting::TraySize.key(),
+                    label: text(Msg::SettingsTraySize),
+                    tiles: sizes,
+                    selected: selected(TRAY_SIZES.iter().position(|(s, _)| *s == size)),
+                },
+                PictureGroup {
+                    key: Setting::TrayPicture.key(),
+                    label: text(Msg::SettingsTrayPicture),
+                    tiles: pictures,
+                    selected: selected(TRAY_PICTURES.iter().position(|(p, _)| *p == picture)),
+                },
+                PictureGroup {
+                    key: Setting::TrayLook.key(),
+                    label: text(Msg::SettingsTrayLook),
+                    tiles: looks,
+                    selected: selected(TRAY_LOOKS.iter().position(|(l, _)| *l == look)),
+                },
+            ],
+        })
     }
 
     fn about_cards(&self) -> Vec<Block> {
@@ -625,14 +680,19 @@ impl<E: AudioEngine> App<E> {
                         self.general_mut().wheel_step = step;
                     }
                 }
-                Some(Setting::TrayStyle) => {
-                    if let Some((style, _)) = TRAY_STYLES.get(index) {
-                        self.general_mut().tray_icon_style = *style;
+                Some(Setting::TrayPicture) => {
+                    if let Some((picture, _)) = TRAY_PICTURES.get(index) {
+                        self.general_mut().tray_icon_style = *picture;
                     }
                 }
                 Some(Setting::TraySize) => {
                     if let Some((size, _)) = TRAY_SIZES.get(index) {
                         self.general_mut().tray_icon_size = *size;
+                    }
+                }
+                Some(Setting::TrayLook) => {
+                    if let Some((look, _)) = TRAY_LOOKS.get(index) {
+                        self.general_mut().tray_icon_look = *look;
                     }
                 }
                 Some(Setting::FlyoutHeight) => {
@@ -825,22 +885,127 @@ mod tests {
         };
         assert_eq!((options.len(), *selected), (10, 1));
         assert_eq!(options[1], "2%");
-        // The update switches are on the About page; hiding the Windows volume icon is
-        // the last card.
-        assert_eq!(content.cards().count(), 11);
-        assert_eq!(content.cards().last().map(|c| c.key), Some(Setting::HideIcon.key()));
-        // The icon size (FR-083) follows the icon style, "Same as Windows" by default.
-        let keys: Vec<_> = content.cards().map(|c| c.key).collect();
-        let style = keys.iter().position(|k| *k == Setting::TrayStyle.key());
-        assert_eq!(keys.get(style.unwrap_or(0) + 1), Some(&Setting::TraySize.key()));
-        let CardControl::Choice { options, selected } = &card(&content, Setting::TraySize).control
-        else {
-            panic!("icon size is a choice")
-        };
+        // Four titled groups (the update switches are on the About page).
+        let layout: Vec<String> = content
+            .blocks
+            .iter()
+            .map(|b| match b {
+                Block::Header(text) => format!("# {text}"),
+                Block::Card(card) => format!("{:?}", Setting::from_key(card.key).unwrap()),
+                Block::Pictures(card) => format!("{:?}", Setting::from_key(card.key).unwrap()),
+                other => format!("{other:?}"),
+            })
+            .collect();
         assert_eq!(
-            (options.clone(), *selected),
-            (vec!["Same as Windows".into(), "Large".into()], 0)
+            layout,
+            [
+                "# Startup and language",
+                "Autostart",
+                "Language",
+                "# Devices",
+                "Scope",
+                "Microphones",
+                "# Icon next to the clock",
+                "TrayIcon",
+                "HideIcon",
+                "Wheel",
+                "VolumeBubble",
+                "# Panel and notifications",
+                "FlyoutHeight",
+                "SwitchNotification",
+            ]
         );
+        // The three tray icon choices side by side, the Windows ones by default.
+        let card = content.picture_cards().next().expect("tray icon card");
+        let groups: Vec<_> = card
+            .groups
+            .iter()
+            .map(|g| {
+                let labels: Vec<_> = g.tiles.iter().map(|t| t.label.as_str()).collect();
+                (g.label.as_str(), labels, g.selected)
+            })
+            .collect();
+        assert_eq!(
+            groups,
+            [
+                ("Size", vec!["Normal", "Large"], 0),
+                ("Picture", vec!["Speaker", "Device"], 0),
+                ("Style", vec!["Windows", "BetterVolume"], 0),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_three_tray_choices_fit_side_by_side_at_the_default_size_in_every_language() {
+        use bv_ui_kit::access::{AccessNode, AccessRole};
+        use bv_ui_kit::backend::{DeviceKind, Graphics};
+        use bv_ui_kit::controls::flyout::GraphicsMeasure;
+        use bv_ui_kit::controls::settings::SettingsView;
+        use bv_ui_kit::tokens::settings::DEFAULT_SIZE;
+        use bv_ui_kit::Size;
+        fn lists<'a>(node: &'a AccessNode, out: &mut Vec<&'a AccessNode>) {
+            if node.role == AccessRole::List && node.children.len() == 2 {
+                out.push(node);
+            }
+            for child in &node.children {
+                lists(child, out);
+            }
+        }
+        let gfx = Graphics::new(DeviceKind::Software).expect("graphics");
+        let measure = GraphicsMeasure { graphics: &gfx, text_scale: 1.0 };
+        let (w, h) = DEFAULT_SIZE;
+        for language in Language::all() {
+            gfx.set_text_locale(&language.locale_name());
+            let mut app = app();
+            app.language = language;
+            app.settings_opening(false);
+            let view = SettingsView::new(app.settings_content(), Size::new(w, h), &measure, 1.0);
+            let tree = view.access_tree(&measure);
+            let mut groups = Vec::new();
+            lists(&tree, &mut groups);
+            assert_eq!(groups.len(), 3, "{language:?}");
+            assert!(
+                groups.iter().all(|g| g.bounds.y == groups[0].bounds.y),
+                "{language:?}: the groups wrap ({:?})",
+                groups.iter().map(|g| (g.name.as_str(), g.bounds)).collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn each_tile_shows_the_icon_with_its_choice_and_the_two_others() {
+        use bv_ui_kit::controls::tray::{DeviceType, TrayLook};
+        let headphones = bv_audio::DeviceInfo {
+            form_factor: bv_audio::FormFactor::Headphones,
+            id: "hp".into(),
+            windows_name: "Headphones".into(),
+            ..Default::default()
+        };
+        let engine = FakeEngine::new().with_device(Flow::Output, headphones);
+        let mut app = App::new(engine, Settings::default(), Language::ENGLISH);
+        app.settings_opening(false);
+        app.settings_action(SettingsAction::Choose(Setting::TrayLook.key(), 1));
+        app.settings_action(SettingsAction::Choose(Setting::TraySize.key(), 1));
+        let content = app.settings_content();
+        let card = content.picture_cards().next().expect("tray icon card");
+        let picture = |group: usize, tile: usize| card.groups[group].tiles[tile].picture;
+        let current = app.tray_icon();
+        assert_eq!(
+            (current.look, current.large, current.badge),
+            (TrayLook::BetterVolume, true, None)
+        );
+        // Size: normal / large, in the chosen look and picture.
+        assert!(!picture(0, 0).large && picture(0, 1).large);
+        assert_eq!(picture(0, 1), current);
+        // Picture: the speaker, then the current device (headphones in the sample).
+        assert_eq!(picture(1, 0), current);
+        assert_eq!(picture(1, 1).badge, Some(DeviceType::Headphones));
+        assert!(picture(1, 1).large);
+        // Look: Windows / BetterVolume, large.
+        assert_eq!(picture(2, 0).look, TrayLook::Windows);
+        assert_eq!(picture(2, 1), current);
+        assert_eq!(card.groups.iter().map(|g| g.selected).collect::<Vec<_>>(), [1, 0, 1]);
+        assert_eq!(app.settings().general.tray_icon_look, TrayIconLook::BetterVolume);
     }
 
     #[test]
@@ -856,12 +1021,21 @@ mod tests {
         assert!(!app.take_dirty(), "reported once");
         app.settings_action(SettingsAction::Choose(Setting::Scope.key(), 2));
         assert_eq!(app.settings().general.switch_scope, SwitchScope::CallsOnly);
-        app.settings_action(SettingsAction::Choose(Setting::TrayStyle.key(), 1));
+        app.settings_action(SettingsAction::Choose(Setting::TrayPicture.key(), 1));
         assert_eq!(app.settings().general.tray_icon_style, TrayIconStyle::WithDeviceBadge);
         assert!(!app.tray_icon().large);
         app.settings_action(SettingsAction::Choose(Setting::TraySize.key(), 1));
         assert_eq!(app.settings().general.tray_icon_size, TrayIconSize::Large);
         assert!(app.tray_icon().large, "applied at once (FR-083)");
+        app.settings_action(SettingsAction::Choose(Setting::TrayLook.key(), 1));
+        assert_eq!(app.settings().general.tray_icon_look, TrayIconLook::BetterVolume);
+        assert_eq!(
+            app.tray_icon().look,
+            bv_ui_kit::controls::tray::TrayLook::BetterVolume,
+            "applied at once (FR-084)"
+        );
+        app.settings_action(SettingsAction::Choose(Setting::TrayLook.key(), 2));
+        assert_eq!(app.settings().general.tray_icon_look, TrayIconLook::BetterVolume);
         app.settings_action(SettingsAction::Toggle(Setting::Microphones.key(), false));
         assert!(!app.settings().general.microphone_enabled);
         assert!(app.flyout_content().tabs.is_none(), "the flyout loses its tabs (FR-076)");

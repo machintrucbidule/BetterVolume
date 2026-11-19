@@ -338,7 +338,12 @@ impl Shell {
             return resource;
         }
         let theme = self.theme();
-        let icon = TrayIcon { level: Some(VolumeLevel::High), badge: None, large: false };
+        let icon = TrayIcon {
+            level: Some(VolumeLevel::High),
+            badge: None,
+            large: false,
+            look: tray::TrayLook::Windows,
+        };
         let mut icons = Vec::new();
         for (kind, pixels) in [(ICON_SMALL, 16_u32), (ICON_BIG, 32)] {
             let drawn = self.with_image_graphics(|graphics| {
@@ -792,6 +797,8 @@ impl Shell {
         if shown {
             dispatch(Event::SettingsClosed(place));
         }
+        // The shared graphics objects grew to draw this large window: give that back.
+        self.release_graphics();
     }
 }
 

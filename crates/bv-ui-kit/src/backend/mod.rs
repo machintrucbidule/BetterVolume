@@ -20,7 +20,8 @@ use std::cell::{OnceCell, RefCell};
 use windows::core::{Interface, HSTRING};
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Graphics::Direct2D::Common::{
-    D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, D2D1_FIGURE_END_OPEN, D2D_SIZE_F,
+    D2D1_BEZIER_SEGMENT, D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, D2D1_FIGURE_END_OPEN,
+    D2D_SIZE_F,
 };
 use windows::Win32::Graphics::Direct2D::{
     D2D1CreateFactory, ID2D1Device, ID2D1DeviceContext, ID2D1Factory, ID2D1Factory1,
@@ -57,7 +58,7 @@ use windows::Win32::System::Com::{
     COINIT_APARTMENTTHREADED,
 };
 
-pub use canvas::{Canvas, TextAlign};
+pub use canvas::{Canvas, Gradient, TextAlign};
 pub use surface::WindowSurface;
 
 use crate::path::{Path, Segment};
@@ -386,6 +387,13 @@ impl Graphics {
                                 D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE
                             },
                             arcSize: if large { D2D1_ARC_SIZE_LARGE } else { D2D1_ARC_SIZE_SMALL },
+                        });
+                    }
+                    Segment::CubicTo { c1, c2, to } if open => {
+                        sink.AddBezier(&D2D1_BEZIER_SEGMENT {
+                            point1: point(c1),
+                            point2: point(c2),
+                            point3: point(to),
                         });
                     }
                     Segment::Close if open => {

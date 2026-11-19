@@ -324,6 +324,22 @@ impl Shell {
         drop(old);
     }
 
+    /// Gives back the memory the shared graphics objects grew to while a large surface
+    /// was drawn (the settings window: about 7 MB measured, of which trimming the
+    /// device's caches returns only about a third): they are dropped, and rebuilt by the
+    /// next drawing, so the next flyout opening takes the time of a first opening once
+    /// (about 40 ms instead of about 6). Nothing is dropped while a popup shows (it would
+    /// lose its surface): the memory then stays until the next time.
+    pub(crate) fn release_graphics(&self) {
+        let popups =
+            [&self.menu_popup, &self.flyout_popup, &self.tooltip_popup, &self.bubble_popup];
+        let showing = popups.iter().any(|p| p.borrow().as_ref().is_some_and(|p| p.is_visible()));
+        if showing || self.graphics.borrow().is_none() {
+            return;
+        }
+        self.reset_graphics();
+    }
+
     /// Sizes and paints a popup before it is shown. A drawing failure (lost device,
     /// display change) rebuilds the graphics objects and tries once more. Returns the
     /// graphics objects that drew it, or `None` (logged) if the popup cannot be drawn.

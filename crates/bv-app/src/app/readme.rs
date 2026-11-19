@@ -19,7 +19,7 @@ use bv_audio::fake::FakeEngine;
 use bv_audio::{AppKey, Bus, DeviceInfo, DeviceState, Flow, FormFactor, Stream};
 use bv_core::devices::KnownDevice;
 use bv_core::i18n::{Language, Msg};
-use bv_core::settings::{FlyoutHeight, Settings, TrayIconSize, TrayIconStyle};
+use bv_core::settings::{FlyoutHeight, Settings, TrayIconLook, TrayIconSize, TrayIconStyle};
 use bv_ui_kit::access::{AccessNode, AccessRole};
 use bv_ui_kit::backend::{DeviceKind, Graphics, Pixels, TextAlign};
 use bv_ui_kit::controls::bubble::{self, BubbleContent};
@@ -51,7 +51,7 @@ const POINTER: bv_ui_kit::motion::CubicBezier =
 /// One animation frame, in milliseconds.
 const FRAME_MS: u32 = 40;
 /// Settings window size for its image (the whole General page fits).
-const SETTINGS: (f32, f32) = (900.0, 1000.0);
+const SETTINGS: (f32, f32) = (980.0, 1170.0);
 /// Application icons, by executable: the icons installed on the PC that draws the images.
 const ICONS: [(&str, &str); 2] = [
     ("firefox.exe", r"%ProgramFiles%\Mozilla Firefox\firefox.exe"),
@@ -621,12 +621,13 @@ fn bubble_scene(out: &mut Output, mode: ThemeMode) -> String {
     )
 }
 
-/// The settings window on its Devices page.
+/// The settings window on its General page.
 fn settings_scene(out: &mut Output, mode: ThemeMode) -> String {
     let mut app = app();
-    // The tray icon options as the tray image shows them.
+    // The tray icon choices as the tray image shows them last.
     app.settings.general.tray_icon_style = TrayIconStyle::WithDeviceBadge;
     app.settings.general.tray_icon_size = TrayIconSize::Large;
+    app.settings.general.tray_icon_look = TrayIconLook::BetterVolume;
     app.settings_opening(false);
     app.settings_action(bv_ui_kit::controls::settings::SettingsAction::SelectPage(
         Page::General.key(),
@@ -671,22 +672,31 @@ fn settings_scene(out: &mut Output, mode: ThemeMode) -> String {
 /// Height of a standard Windows 11 title bar.
 const CAPTION_HEIGHT: f32 = 32.0;
 
-/// The tray icon in the "with device badge" style and the "Large" size, for each of the
-/// three outputs, in a theme: the taskbar corner with each output current.
+/// The tray icon at the "Large" size in both looks (FR-084): the speaker, then the
+/// picture "device" for each of the three outputs, in a theme (the taskbar with each
+/// output current).
 fn tray_scenes(out: &mut Output, mode: ThemeMode) -> Vec<String> {
-    ["spk", "hs", "tv"]
+    let pictures = [
+        ("speaker", "spk", TrayIconStyle::SameAsWindows),
+        ("spk", "spk", TrayIconStyle::WithDeviceBadge),
+        ("hs", "hs", TrayIconStyle::WithDeviceBadge),
+        ("tv", "tv", TrayIconStyle::WithDeviceBadge),
+    ];
+    [("windows", TrayIconLook::Windows), ("bettervolume", TrayIconLook::BetterVolume)]
         .into_iter()
-        .map(|id| {
+        .flat_map(|look| pictures.map(|picture| (look, picture)))
+        .map(|((look_name, look), (name, id, picture))| {
             let mut app = app();
-            app.settings.general.tray_icon_style = TrayIconStyle::WithDeviceBadge;
+            app.settings.general.tray_icon_style = picture;
             app.settings.general.tray_icon_size = TrayIconSize::Large;
+            app.settings.general.tray_icon_look = look;
             app.engine.defaults[Flow::Output.index()] = [Some(id.into()), Some(id.into())];
             app.engine.sync();
             app.on_audio_signals();
             let (taskbar, icon) = out.taskbar(&app, mode, false);
             format!(
-                "{{\"mode\": \"{}\", \"device\": \"{id}\", \"taskbar\": \"{taskbar}\", \
-                 \"icon\": [{:.2}, {:.2}]}}",
+                "{{\"mode\": \"{}\", \"look\": \"{look_name}\", \"picture\": \"{name}\", \
+                 \"taskbar\": \"{taskbar}\", \"icon\": [{:.2}, {:.2}]}}",
                 mode_name(mode),
                 icon.x,
                 icon.y

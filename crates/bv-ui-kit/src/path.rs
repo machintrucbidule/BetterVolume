@@ -20,6 +20,15 @@ pub enum Segment {
         /// The longer of the two possible arcs.
         large: bool,
     },
+    /// Cubic Bézier curve to a point.
+    CubicTo {
+        /// First control point.
+        c1: Point,
+        /// Second control point.
+        c2: Point,
+        /// End point.
+        to: Point,
+    },
     /// Closes the current figure back to its start.
     Close,
 }
@@ -63,6 +72,16 @@ impl Path {
     /// Adds an elliptic arc.
     pub fn ellipse_to(mut self, x: f32, y: f32, radii: Size, clockwise: bool) -> Path {
         self.segments.push(Segment::ArcTo { to: Point::new(x, y), radii, clockwise, large: false });
+        self
+    }
+
+    /// Adds a cubic Bézier curve.
+    pub fn cubic_to(mut self, c1: (f32, f32), c2: (f32, f32), to: (f32, f32)) -> Path {
+        self.segments.push(Segment::CubicTo {
+            c1: Point::new(c1.0, c1.1),
+            c2: Point::new(c2.0, c2.1),
+            to: Point::new(to.0, to.1),
+        });
         self
     }
 

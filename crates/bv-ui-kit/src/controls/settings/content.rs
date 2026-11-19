@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use crate::backend::Pixels;
 use crate::controls::device_icon::DeviceIcon;
+use crate::controls::tray::TrayIcon;
 use crate::icons::Icon;
 
 /// Identifies a page of the settings window (opaque to the design system).
@@ -78,6 +79,46 @@ pub struct TextField {
     pub digits_only: bool,
     /// Longest text, in characters.
     pub max_chars: usize,
+}
+
+/// A card of picture choices, like the Start layout choice of Windows 11: its icon, title
+/// and description, then groups of tiles side by side (wrapping in a narrow window). In
+/// each group one tile is chosen; a click or the arrow keys choose another
+/// ([`SettingsAction::Choose`] of the group's key).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PictureCard {
+    /// Identifier of the card.
+    pub key: SettingKey,
+    /// Its icon.
+    pub icon: Option<Icon>,
+    /// Its title.
+    pub title: String,
+    /// Its description.
+    pub description: Option<String>,
+    /// The groups, left to right.
+    pub groups: Vec<PictureGroup>,
+}
+
+/// One group of tiles of a [`PictureCard`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PictureGroup {
+    /// Identifier of the group, reported with the chosen tile.
+    pub key: SettingKey,
+    /// Its label, over the tiles.
+    pub label: String,
+    /// The tiles, left to right.
+    pub tiles: Vec<PictureTile>,
+    /// Index of the chosen tile.
+    pub selected: usize,
+}
+
+/// One tile: a picture over its label.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PictureTile {
+    /// Its label.
+    pub label: String,
+    /// The tray icon it shows, on a strip of the taskbar colour.
+    pub picture: TrayIcon,
 }
 
 /// How serious a notice is (WinUI InfoBar severities).
@@ -282,6 +323,8 @@ pub enum Block {
     Notice(Notice),
     /// A row of push buttons, at the left.
     Buttons(Vec<Button>),
+    /// A card of picture choices.
+    Pictures(PictureCard),
 }
 
 /// Everything the settings window shows.
@@ -358,6 +401,19 @@ impl SettingsContent {
         })
     }
 
+    /// The picture cards of the page, in order.
+    pub fn picture_cards(&self) -> impl Iterator<Item = &PictureCard> {
+        self.blocks.iter().filter_map(|b| match b {
+            Block::Pictures(card) => Some(card),
+            _ => None,
+        })
+    }
+
+    /// The group of picture tiles with this key.
+    pub fn picture_group(&self, key: SettingKey) -> Option<&PictureGroup> {
+        self.picture_cards().flat_map(|c| &c.groups).find(|g| g.key == key)
+    }
+
     /// The text field of the card `key`, if it is one.
     pub fn field(&self, key: SettingKey) -> Option<&TextField> {
         match &self.card(key)?.control {
@@ -374,7 +430,7 @@ pub enum SettingsAction {
     SelectPage(PageKey),
     /// Turn this toggle on or off.
     Toggle(SettingKey, bool),
-    /// Choose this option of a drop-down choice.
+    /// Choose this option of a drop-down choice, or this tile of a group of pictures.
     Choose(SettingKey, usize),
     /// Follow this link.
     Invoke(SettingKey),
