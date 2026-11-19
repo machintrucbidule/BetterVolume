@@ -19,6 +19,8 @@ pub(crate) struct CardLayout {
     pub rect: Rect,
     pub icon: Option<Rect>,
     pub title: Rect,
+    /// Lines of the title (it wraps like the description).
+    pub title_lines: u32,
     pub description: Option<(Rect, u32)>,
     /// The whole control (toggle: label and switch; choice: the box; link: the button).
     pub control: Option<Rect>,
@@ -72,7 +74,8 @@ pub(crate) struct NoticeLayout {
     pub key: SettingKey,
     pub rect: Rect,
     pub icon: Rect,
-    pub title: Rect,
+    /// The title, and its number of lines.
+    pub title: (Rect, u32),
     /// The message, and its number of lines.
     pub message: (Rect, u32),
     pub action: Option<Rect>,
@@ -248,26 +251,57 @@ pub(crate) fn layout(
                 y += height + t::TEXT_GAP;
             }
             Block::Card(card) => {
-                let control = control_size(&card.control, measure, text_scale);
                 let text_x =
                     x + pad_x + if card.icon.is_some() { icon_size + icon_gap } else { 0.0 };
-                let control_room = control.map_or(0.0, |c| c.width + t::CARD_CONTROL_GAP);
-                let text_width = (x + width - pad_x - control_room - text_x).max(1.0);
+                // A narrow card puts its control under its text (WinUI SettingsCard), never
+                // wider than the room left of the card.
+                let (with_icon, without_icon) = t::CARD_WRAP_THRESHOLD;
+                let threshold = if card.icon.is_some() { with_icon } else { without_icon };
+                let full_width = (x + width - pad_x - text_x).max(1.0);
+                let control = control_size(&card.control, measure, text_scale);
+                let wrapped = control.is_some() && width < threshold;
+                let control = control.map(|c| {
+                    if wrapped {
+                        Size::new(c.width.min(full_width), c.height)
+                    } else {
+                        c
+                    }
+                });
+                let control_room = match control {
+                    Some(c) if !wrapped => c.width + t::CARD_CONTROL_GAP,
+                    _ => 0.0,
+                };
+                let text_width = (full_width - control_room).max(1.0);
                 let description = card.description.as_ref().map(|d| {
                     let lines = measure.lines(d, CAPTION, text_width).clamp(1, 6);
                     (lines, lines as f32 * line(CAPTION))
                 });
-                let text_height = line(BODY) + description.map_or(0.0, |(_, h)| h);
-                let height = (text_height + 2.0 * pad_y).max(t::CARD_MIN_HEIGHT).round();
+                let title_lines = measure.lines(&card.title, BODY, text_width).clamp(1, 3);
+                let title_height = title_lines as f32 * line(BODY);
+                let text_height = title_height + description.map_or(0.0, |(_, h)| h);
+                let below = match control {
+                    Some(c) if wrapped => t::CARD_WRAP_GAP + c.height,
+                    _ => 0.0,
+                };
+                let height = (text_height + below + 2.0 * pad_y).max(t::CARD_MIN_HEIGHT).round();
                 let rect = Rect::new(x, y, width, height);
-                let text_top = (y + (height - text_height) / 2.0).round();
+                let text_top = (y + (height - text_height - below) / 2.0).round();
                 let control_rect = control.map(|c| {
-                    Rect::new(
-                        rect.right() - pad_x - c.width,
-                        (y + (height - c.height) / 2.0).round(),
-                        c.width,
-                        c.height,
-                    )
+                    if wrapped {
+                        Rect::new(
+                            text_x,
+                            text_top + text_height + t::CARD_WRAP_GAP,
+                            c.width,
+                            c.height,
+                        )
+                    } else {
+                        Rect::new(
+                            rect.right() - pad_x - c.width,
+                            (y + (height - c.height) / 2.0).round(),
+                            c.width,
+                            c.height,
+                        )
+                    }
                 });
                 let (switch, switch_label) = match (&card.control, control_rect) {
                     (CardControl::Toggle { .. }, Some(r)) => {
@@ -290,9 +324,10 @@ pub(crate) fn layout(
                             icon_size,
                         )
                     }),
-                    title: Rect::new(text_x, text_top, text_width, line(BODY)),
+                    title: Rect::new(text_x, text_top, text_width, title_height),
+                    title_lines,
                     description: description.map(|(lines, h)| {
-                        (Rect::new(text_x, text_top + line(BODY), text_width, h), lines)
+                        (Rect::new(text_x, text_top + title_height, text_width, h), lines)
                     }),
                     control: control_rect,
                     switch,
@@ -310,22 +345,32 @@ pub(crate) fn layout(
                 let title_width = measure.width(&notice.title, BODY_STRONG).ceil();
                 let message_width = measure.width(&notice.message, BODY).ceil();
                 // Title and message on one line when they fit, the message under it
-                // otherwise (WinUI InfoBar).
-                let inline = title_width + t::NOTICE_TITLE_GAP + message_width <= room;
-                let (title, message, text_height) = if inline || notice.message.is_empty() {
+                // otherwise, a long title wrapped (WinUI InfoBar).
+                let inline = if notice.message.is_empty() {
+                    title_width <= room
+                } else {
+                    title_width + t::NOTICE_TITLE_GAP + message_width <= room
+                };
+                let (title, message, text_height) = if inline {
                     let message_x = text_x + title_width + t::NOTICE_TITLE_GAP;
                     (
-                        Rect::new(text_x, 0.0, title_width.min(room), line(BODY)),
+                        (Rect::new(text_x, 0.0, title_width.min(room), line(BODY)), 1),
                         (Rect::new(message_x, 0.0, (right - message_x).max(1.0), line(BODY)), 1),
                         line(BODY),
                     )
                 } else {
-                    let lines = measure.lines(&notice.message, BODY, room).clamp(1, 6);
+                    let title_lines = measure.lines(&notice.title, BODY_STRONG, room).clamp(1, 3);
+                    let title_height = title_lines as f32 * line(BODY);
+                    let lines = if notice.message.is_empty() {
+                        0
+                    } else {
+                        measure.lines(&notice.message, BODY, room).clamp(1, 6)
+                    };
                     let message_height = lines as f32 * line(BODY);
                     (
-                        Rect::new(text_x, 0.0, room, line(BODY)),
-                        (Rect::new(text_x, line(BODY), room, message_height), lines),
-                        line(BODY) + message_height,
+                        (Rect::new(text_x, 0.0, room, title_height), title_lines),
+                        (Rect::new(text_x, title_height, room, message_height), lines),
+                        title_height + message_height,
                     )
                 };
                 let action_height = action.map_or(0.0, |a| a.height);
@@ -343,7 +388,7 @@ pub(crate) fn layout(
                         icon,
                         icon,
                     ),
-                    title: shift(title),
+                    title: (shift(title.0), title.1),
                     message: (shift(message.0), message.1),
                     action: action.map(|a| {
                         Rect::new(

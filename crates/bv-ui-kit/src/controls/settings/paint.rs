@@ -176,13 +176,19 @@ pub(super) fn paint(
                         let (size, _) = t::CARD_ICON;
                         canvas.glyph(icon.glyph(), size, layout.on_screen(r), text);
                     }
-                    canvas.text(
-                        &card.title,
-                        BODY,
-                        layout.on_screen(laid.title),
-                        TextAlign::Leading,
-                        text,
-                    );
+                    let title = layout.on_screen(laid.title);
+                    if laid.title_lines > 1 {
+                        canvas.text_wrapped(
+                            &card.title,
+                            BODY,
+                            title,
+                            TextAlign::Leading,
+                            laid.title_lines,
+                            text,
+                        );
+                    } else {
+                        canvas.text(&card.title, BODY, title, TextAlign::Leading, text);
+                    }
                     if let (Some(description), Some((r, lines))) =
                         (&card.description, laid.description)
                     {
@@ -585,11 +591,13 @@ fn paint_notice(
         super::content::Severity::Critical => Icon::NoticeError,
     };
     canvas.glyph(glyph.glyph(), size, icon, w.notice_glyph);
-    canvas.text(
+    let (title, title_lines) = laid.title;
+    canvas.text_wrapped(
         &notice.title,
         BODY_STRONG,
-        layout.on_screen(laid.title),
+        layout.on_screen(title),
         TextAlign::Leading,
+        title_lines,
         theme.text_primary,
     );
     let (message, lines) = laid.message;

@@ -295,6 +295,11 @@ pub mod settings {
     pub const CARD_ICON: (f32, f32) = (20.0, 20.0);
     /// Smallest gap between the card text and its control.
     pub const CARD_CONTROL_GAP: f32 = 16.0;
+    /// Width under which a card puts its control under its text (WinUI `SettingsCard`
+    /// wrap thresholds): with an icon, without one.
+    pub const CARD_WRAP_THRESHOLD: (f32, f32) = (476.0, 286.0);
+    /// Gap between the text of a wrapped card and its control.
+    pub const CARD_WRAP_GAP: f32 = 8.0;
     /// Toggle switch track: width, height.
     pub const TOGGLE: (f32, f32) = (40.0, 20.0);
     /// Knob diameter of the toggle switch: at rest, under the pointer.

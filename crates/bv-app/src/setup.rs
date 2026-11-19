@@ -426,7 +426,12 @@ fn run_window(
     done: impl FnOnce(&Setup) + 'static,
 ) -> ExitCode {
     let work = std::sync::Arc::new(work);
-    let config = ShellConfig { tooltip: String::new(), app_name: String::new(), tray: false };
+    let config = ShellConfig {
+        tooltip: String::new(),
+        app_name: String::new(),
+        tray: false,
+        text_locale: setup.language.locale_name(),
+    };
     let outcome = bv_shell::run(config, move |shell| {
         let waker = shell.waker();
         let (results, inbox) = mpsc::channel::<Result<bool, Failure>>();

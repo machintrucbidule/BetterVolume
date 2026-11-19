@@ -20,7 +20,7 @@ use bv_ui_kit::controls::settings::{
 use super::App;
 
 /// The "Sort alphabetically" button.
-const SORT: SettingKey = SettingKey(0x31_0000);
+pub(super) const SORT: SettingKey = SettingKey(0x31_0000);
 
 /// The programs running now, by lower-case executable file name, sorted (the shell reads
 /// them; tests give a fixed list).

@@ -323,7 +323,12 @@ fn main() -> ExitCode {
     let language = Language::resolve(settings.general.language.as_deref(), &os_languages);
 
     let app_name = language.text(Msg::AppName).to_owned();
-    let config = ShellConfig { tooltip: app_name.clone(), app_name, tray: true };
+    let config = ShellConfig {
+        tooltip: app_name.clone(),
+        app_name,
+        tray: true,
+        text_locale: language.locale_name(),
+    };
     let outcome = bv_shell::run(config, move |shell| {
         // Audio callbacks arrive on Windows threads: they only wake the UI thread.
         let waker = shell.waker();
@@ -494,7 +499,10 @@ fn main() -> ExitCode {
                     None => {}
                 },
                 Event::Settings(action) => {
-                    match app.settings_action(action) {
+                    let effect = app.settings_action(action);
+                    // A language chosen here applies to the fonts before anything redraws.
+                    shell.set_text_locale(&app.language().locale_name());
+                    match effect {
                         SettingsEffect::Refresh => {}
                         SettingsEffect::SetAutostart(on) => {
                             bv_shell::set_autostart(on);
@@ -570,6 +578,7 @@ fn main() -> ExitCode {
                 refresh_flyout(shell, &app);
                 refresh_settings(shell, &app);
             }
+            shell.set_text_locale(&app.language().locale_name());
             save(&mut store, &mut app);
         }
     });

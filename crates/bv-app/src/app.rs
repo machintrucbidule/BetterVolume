@@ -31,6 +31,9 @@ mod ha_page;
 mod settings_window;
 mod update;
 mod volume_icon;
+// Language sheets (images for a visual check of the translations, run on demand).
+#[cfg(test)]
+mod sheets;
 
 pub use apps_page::ProcessList;
 pub use flyout::FlyoutEffect;

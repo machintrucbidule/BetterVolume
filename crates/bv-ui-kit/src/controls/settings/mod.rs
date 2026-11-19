@@ -334,6 +334,11 @@ impl SettingsView {
         self.edit.is_some() || self.field.is_some()
     }
 
+    /// Whether the confirmation of a forget button is shown.
+    pub fn confirming(&self) -> bool {
+        self.confirm.is_some()
+    }
+
     fn extras(&self) -> Extras {
         Extras {
             picker: self.picker.map(|p| p.key),

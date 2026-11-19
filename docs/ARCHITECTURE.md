@@ -112,8 +112,9 @@ crates/
                 process of the executable (bv-shell `taskbar.rs`).
   bv-app        The executable: wires events, owns state, builds views from bv-ui-kit
                 controls. Contains no drawing code and no colour/metric literals.
-locales/        en.toml, fr.toml translation files (compiled into static tables at build
-                time by the bv-core build script; en.toml defines the message keys)
+locales/        <language tag>.toml translation files (en, fr, de, es, it, pt-BR, nl, pl, ja,
+                zh-Hans; compiled into static tables at build time by the bv-core build
+                script; en.toml defines the message keys)
                 (icons: Windows icon-font glyphs in bv-ui-kit `icons.rs`, device drawings
                 as vector paths in code, `controls/tray.rs`; the application icon is the
                 only asset file)

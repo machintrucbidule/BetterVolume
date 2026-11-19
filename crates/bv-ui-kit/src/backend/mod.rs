@@ -161,6 +161,8 @@ pub struct Graphics {
     gpu: OnceCell<Gpu>,
     round_stroke: OnceCell<ID2D1StrokeStyle>,
     formats: RefCell<Vec<(FormatKey, IDWriteTextFormat)>>,
+    /// Locale name of the texts (empty: none); it picks the fonts of Asian scripts.
+    text_locale: RefCell<HSTRING>,
     // Dropped last: COM must outlive every object above.
     _apartment: Apartment,
 }
@@ -186,8 +188,21 @@ impl Graphics {
             gpu: OnceCell::new(),
             round_stroke: OnceCell::new(),
             formats: RefCell::new(Vec::new()),
+            text_locale: RefCell::new(HSTRING::new()),
             _apartment: apartment,
         })
+    }
+
+    /// Sets the language of the texts drawn from now on, as a locale name (`ja`,
+    /// `zh-Hans`, `de`...). DirectWrite picks the fonts of characters the text font lacks
+    /// from it: Japanese gets the Japanese fonts of Windows and Simplified Chinese the
+    /// Chinese ones (the same characters are drawn differently in each).
+    pub fn set_text_locale(&self, locale: &str) {
+        if *self.text_locale.borrow() == locale {
+            return;
+        }
+        *self.text_locale.borrow_mut() = HSTRING::from(locale);
+        self.formats.borrow_mut().clear();
     }
 
     /// Whether the graphics device exists already (the next surface is then cheap).
@@ -296,7 +311,7 @@ impl Graphics {
                 DWRITE_FONT_STYLE_NORMAL,
                 DWRITE_FONT_STRETCH_NORMAL,
                 key.size,
-                &HSTRING::new(),
+                &*self.text_locale.borrow(),
             )
         }?;
         // SAFETY: plain setters on the new format.
@@ -565,5 +580,44 @@ impl Graphics {
         // SAFETY: `data` holds exactly `stride * height` bytes; null rectangle = whole image.
         unsafe { bitmap.CopyPixels(std::ptr::null(), stride, &mut data) }?;
         Ok(Pixels { width, height, data })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tokens::typography::BODY;
+    use crate::{Color, Rect};
+
+    fn draw(gfx: &Graphics, text: &str) -> Pixels {
+        gfx.rasterize(64, 32, 1.0, 1.0, |c| {
+            c.clear(Color::rgb(0xFFFFFF));
+            c.text(
+                text,
+                BODY,
+                Rect::new(0.0, 0.0, 64.0, 32.0),
+                canvas::TextAlign::Leading,
+                Color::rgb(0x000000),
+            );
+        })
+        .expect("rasterize")
+    }
+
+    #[test]
+    fn the_text_locale_picks_the_japanese_or_the_chinese_form_of_a_character() {
+        let gfx = Graphics::new(DeviceKind::Software).expect("graphics");
+        // The same characters, drawn differently in Japan and in China.
+        let shared = "直骨";
+        gfx.set_text_locale("ja");
+        let japanese = draw(&gfx, shared);
+        gfx.set_text_locale("zh-Hans");
+        let chinese = draw(&gfx, shared);
+        assert_ne!(japanese, chinese, "the locale must choose the fonts of Asian scripts");
+        // Setting a locale again gives the same drawing (the format cache follows it).
+        gfx.set_text_locale("ja");
+        assert_eq!(draw(&gfx, shared), japanese);
+        // Something is drawn at all.
+        let blank = draw(&gfx, "");
+        assert_ne!(japanese, blank);
     }
 }

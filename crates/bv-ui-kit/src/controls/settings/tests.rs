@@ -122,6 +122,52 @@ fn cards_stack_under_the_title_with_controls_at_the_right() {
 }
 
 #[test]
+fn a_narrow_card_puts_its_control_under_its_text() {
+    let field = CardControl::TextField(TextField {
+        value: String::new(),
+        placeholder: String::new(),
+        password: false,
+        digits_only: false,
+        max_chars: 10,
+    });
+    let mut page = general(true, 0);
+    page.blocks.push(card(SettingKey(9), "Address", field));
+    // The narrowest window: cards narrower than the wrap threshold.
+    let (min_width, min_height) = t::MIN_SIZE;
+    let narrow = SettingsView::new(page.clone(), Size::new(min_width, min_height), &Fixed, 1.0);
+    let wide = view(page);
+    for (n, w) in narrow.layout.cards.iter().zip(&wide.layout.cards) {
+        assert!(n.rect.width < t::CARD_WRAP_THRESHOLD.0);
+        let Some(c) = n.control else {
+            assert!(w.control.is_none());
+            continue;
+        };
+        // Under the text, aligned with it, inside the card.
+        let text_bottom = n.description.map_or(n.title.bottom(), |(d, _)| d.bottom());
+        assert!(c.y >= text_bottom + t::CARD_WRAP_GAP - 0.01, "control under the text");
+        assert!((c.x - n.title.x).abs() < 0.01, "aligned with the text");
+        assert!(c.right() <= n.rect.right() - t::CARD_PADDING.0 + 0.01, "inside the card");
+        assert!(c.bottom() <= n.rect.bottom() - t::CARD_PADDING.1 + 0.01);
+        // The text takes the whole width again.
+        assert!((n.title.right() - (n.rect.right() - t::CARD_PADDING.0)).abs() < 0.01);
+        // Wide cards keep the control on the right.
+        let wc = w.control.unwrap();
+        assert!((wc.right() - (w.rect.right() - t::CARD_PADDING.0)).abs() < 0.01);
+    }
+    // The text field, wider than the room, is narrowed to it.
+    let field = narrow.layout.cards.last().unwrap();
+    assert!(field.control.unwrap().width < t::FIELD_WIDTH);
+    // A long title wraps instead of being cut; the description follows it.
+    let mut long = general(true, 0);
+    long.blocks[0] = card(AUTOSTART, &"Long title ".repeat(8), toggle(true));
+    let v = SettingsView::new(long, Size::new(min_width, min_height), &Fixed, 1.0);
+    let first = &v.layout.cards[0];
+    assert!(first.title_lines > 1);
+    assert!(first.description.unwrap().0.y >= first.title.bottom() - 0.01);
+    assert_eq!(narrow.layout.cards[0].title_lines, 1);
+}
+
+#[test]
 fn text_scaling_grows_the_rows() {
     let small = view(general(true, 0));
     let large = SettingsView::new(general(true, 0), Size::new(900.0, 600.0), &Fixed, 2.0);
@@ -1139,4 +1185,32 @@ fn a_dialog_grows_until_its_button_labels_fit() {
     }
     assert!(d.rect.width > crate::tokens::settings::DIALOG.0, "wider than its usual width");
     assert!(d.rect.right() <= v.size().width, "still inside the window");
+}
+
+#[test]
+fn a_long_notice_title_wraps_above_its_message() {
+    let notice = |title: &str| {
+        content(
+            GENERAL,
+            vec![Block::Notice(Notice {
+                key: NOTICE,
+                severity: Severity::Caution,
+                title: title.into(),
+                message: "The option was turned off to be safe".into(),
+                action: None,
+            })],
+        )
+    };
+    let (min_width, min_height) = t::MIN_SIZE;
+    let size = Size::new(min_width, min_height);
+    let short = SettingsView::new(notice("Shown again"), size, &Fixed, 1.0);
+    let long = SettingsView::new(notice(&"Very long title ".repeat(6)), size, &Fixed, 1.0);
+    let (title, lines) = long.layout.notices[0].title;
+    assert!(lines > 1, "wrapped, not cut");
+    let body = crate::tokens::typography::BODY.line_height;
+    assert!(title.height >= lines as f32 * body - 0.01);
+    let (message, _) = long.layout.notices[0].message;
+    assert!(message.y >= title.bottom() - 0.01, "the message under the whole title");
+    assert!(long.layout.notices[0].rect.bottom() >= message.bottom());
+    assert_eq!(short.layout.notices[0].title.1, 1);
 }

@@ -159,6 +159,8 @@ Wording: **must** = required for v1.
 - **FR-070** Standard resizable window in Windows 11 Settings style: navigation on the left
   (General, Devices, Applications, Home Assistant, About), cards on the right. Changes apply immediately
   (no global Save button), except the MQTT connection form which has Test and Save.
+  At any width and in any language nothing is cut: in a narrow window each setting moves
+  under its text, as in Windows 11 Settings, and long titles wrap.
 - **FR-071** Opens automatically on the very first launch only; later via the context menu
   or the flyout footer. Exceptions: once at the next start of an installation that has not
   answered the FR-018 question yet, and after a guard-rail incident.
@@ -168,8 +170,10 @@ Wording: **must** = required for v1.
 - **FR-073** Wheel step: 1–10, default 2. Applies to tray icon and all sliders.
 - **FR-074** Start with Windows: on/off (default on for the installed version; the installer
   also offers it).
-- **FR-075** Language: "Automatic" (OS display language, English fallback) or an explicit
-  language from those shipped. Changing it applies without restart.
+- **FR-075** Language: "Automatic" (OS display language, English fallback, FR-121) or an
+  explicit language from those shipped, each in its own name, in alphabetical order of
+  those names as the Windows language list (Latin scripts first, then Japanese and
+  Chinese). Changing it applies without restart.
 - **FR-076** Microphone management: on/off (default on). Off removes the tabs, the inputs
   list in settings, and all microphone entities in Home Assistant.
 - **FR-077** Device-switch notification: on/off (default on).
@@ -296,9 +300,15 @@ Wording: **must** = required for v1.
 ## 9. Languages
 
 - **FR-120** Ships with English and French; version 2.1.0 adds German, Spanish, Italian,
-  Portuguese (Brazil), Dutch, Polish, Japanese and Simplified Chinese. All user-visible text comes from translation
-  files; adding a language requires only a new file.
-- **FR-121** Automatic mode picks the OS display language, falling back to English.
+  Portuguese (Brazil), Dutch, Polish, Japanese and Simplified Chinese. All user-visible
+  text comes from translation files; adding a language requires only a new file. Texts
+  use the terms Windows 11 uses in each language. Japanese and Chinese are drawn with the
+  fonts Windows uses for that language.
+- **FR-121** Automatic mode picks the first OS display language that a shipped language
+  serves, falling back to English. A regional variant is served by its language (`fr-CA`
+  by French, any Portuguese by Portuguese (Brazil)), never by one written in another
+  script: Traditional Chinese (Taiwan, Hong Kong, Macao, `zh-Hant`) gets English, not
+  Simplified Chinese.
 - **FR-122** Custom device names and application names are never translated.
 
 ## 10. Settings storage

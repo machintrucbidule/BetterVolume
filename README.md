@@ -27,7 +27,8 @@ Home Assistant control over MQTT.
 - **Can replace the Windows volume icon** (optional, off by default, see below).
 - **Light.** A few megabytes of memory, and practically no processor time while it waits
   (it only reacts to events).
-- English and French; it follows the Windows display language.
+- In English, French, German, Spanish, Italian, Portuguese (Brazil), Dutch, Polish,
+  Japanese and Simplified Chinese; it follows the Windows display language.
 
 <p align="center">
   <img src="docs/images/settings.png" alt="The BetterVolume settings window, General page" width="800">
@@ -178,9 +179,13 @@ release workflow build the two files with the same checks and prepare a draft re
 
 ## Translating
 
-Copy `locales/en.toml` to `<language tag>.toml` (for example `de.toml`), translate the
-texts, rebuild. The tests check that every language has the same keys and placeholders as
-English. Contributions are welcome.
+The translations other than English and French were written without a native speaker. If
+a text sounds clumsy or wrong in your language, please open an issue on this project's
+page with the better wording: it is the most helpful contribution there is.
+
+To add a language, copy `locales/en.toml` to `<language tag>.toml` (for example
+`sv.toml`), translate the texts, rebuild. The tests check that every language has the
+same keys and placeholders as English. Contributions are welcome.
 
 ## Licence
 

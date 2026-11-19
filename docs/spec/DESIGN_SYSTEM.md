@@ -18,6 +18,7 @@ easing. Restyling = changing this crate.
 | Icons | `icons.rs` (glyphs), `controls/tray.rs` (tray badges), `controls/device_icon.rs` (catalogue) | Segoe Fluent Icons (the system's own font); own drawings in its style |
 | Flyout controls | `controls/flyout/` (content, layout, painting, input, accessibility), `controls/tooltip.rs` | WinUI 3 control templates (slider, toggle button, selector bar), Windows 11 quick settings |
 | Accessibility | `access.rs` (tree), exposed by `bv-shell/src/uia.rs` | UI Automation control types and patterns |
+| Text fonts | `tokens.rs` (`TEXT_FAMILY`), `Graphics::set_text_locale` | Segoe UI Variable; characters it lacks come from Windows' font fallback chosen by the interface language (the Japanese fonts for Japanese, the Chinese ones for Chinese: the same characters are drawn differently) |
 
 ## 2. Theme resolution (FR-004)
 
@@ -119,7 +120,9 @@ it (`bv-shell/src/popup.rs`). Values compared with the system flyouts.
 
 `cargo run -p bv-ui-kit --example gallery -- <folder>` renders the tray icons (every
 scaling, both taskbar colours, both styles, both sizes), an icon-font sheet and the menu (both modes,
-100/150/225 %) to PNG files through the real backend, for visual checks.
+100/150/225 %) to PNG files through the real backend, for visual checks. The language
+sheets (`bv-app`, test `language_sheets`, run with `--ignored` and `BV_SHEETS=<folder>`)
+draw every window of the application in every shipped language with the real views.
 
 ## 8. Flyout layout
 
@@ -238,8 +241,11 @@ name", 0 to 100, small change 1, large change 10), footer buttons. Menu: menu, m
   wide; title "Title" style (28/36 semibold); gap 20 to the first card; group header body
   strong, 26 above (between groups) and 8 below.
 - Card: at least 68 high, padding 16 × 12, radius 4, card fill and card stroke; icon 20,
-  gap 20; title body; description caption secondary (wraps); control right-aligned, at
-  least 16 from the text; gap 4 between cards.
+  gap 20; title body and description caption secondary, both wrapping (title up to 3
+  lines); control right-aligned, at least 16 from the text; gap 4 between cards. A card
+  narrower than 476 (286 without an icon, WinUI `SettingsCard` wrap thresholds) puts its
+  control under its text instead: 8 below it, aligned with the text, narrowed to the room
+  left if wider.
 - Toggle switch: track 40 × 20; off: subtle track, 1-DIP strong outline and knob
   (secondary text colour); on: accent track, knob in text-on-accent colour; knob 12, 14
   under the pointer, stretched to 17 while pressed; "On" / "Off" label at its left (gap
@@ -312,7 +318,8 @@ name", 0 to 100, small change 1, large change 10), footer buttons. Menu: menu, m
   success, caution, critical, the WinUI "system fill background" colours); severity icon
   16 = filled circle (U+F136) in `notice_icon` with the severity glyph (U+F13F, U+F13E,
   U+F13C, U+F13D) in `notice_glyph` on it, then 12; title in body strong and message in
-  body on one line when they fit, the message under the title otherwise; an optional
+  body on one line when they fit, the message under the title otherwise (a long title
+  wraps, up to 3 lines); an optional
   standard button at the right.
 - Close question (WinUI ContentDialog): veil `Theme::window.smoke` over the window; dialog
   480 wide (less on a narrow window), centred, radius 8, solid fill and popup outline,

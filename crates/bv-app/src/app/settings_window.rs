@@ -384,20 +384,21 @@ impl<E: AudioEngine> App<E> {
     }
 
     /// The language choices: automatic (naming the language it gives now), then every
-    /// shipped language in its own name (FR-075).
+    /// shipped language in its own name, in the order of the language list (FR-075).
     fn language_choice(&self) -> CardControl {
         let automatic = Language::resolve(None::<&str>, &self.os_languages);
         let mut options = vec![self
             .language
             .format(Msg::SettingsLanguageAuto, &[("language", automatic.native_name())])];
-        options.extend(Language::all().map(|l| l.native_name().to_owned()));
+        options
+            .extend(Language::in_display_order().into_iter().map(|l| l.native_name().to_owned()));
         let selected = self
             .settings
             .general
             .language
             .as_deref()
             .and_then(Language::from_tag)
-            .and_then(|chosen| Language::all().position(|l| l == chosen))
+            .and_then(|chosen| Language::in_display_order().iter().position(|&l| l == chosen))
             .map_or(0, |i| i + 1);
         CardControl::Choice { options, selected }
     }
@@ -605,7 +606,7 @@ impl<E: AudioEngine> App<E> {
                 Some(Setting::Language) => {
                     let tag = index
                         .checked_sub(1)
-                        .and_then(|i| Language::all().nth(i))
+                        .and_then(|i| Language::in_display_order().get(i).copied())
                         .map(|l| l.tag().to_owned());
                     self.general_mut().language = tag;
                     self.language = Language::resolve(
@@ -790,8 +791,8 @@ mod tests {
 
     fn app() -> App<FakeEngine> {
         let mut app = App::new(FakeEngine::default(), Settings::default(), Language::ENGLISH);
-        // German is not shipped: the automatic language is English.
-        app.set_os_languages(vec!["de-DE".into(), "en-US".into()]);
+        // Swedish is not shipped: the automatic language is English.
+        app.set_os_languages(vec!["sv-SE".into(), "en-US".into()]);
         app.take_dirty();
         app
     }
@@ -886,12 +887,20 @@ mod tests {
     fn language_changes_apply_without_restart() {
         let mut app = app();
         app.settings_opening(false);
-        let french = Language::all().position(|l| l.tag() == "fr").expect("French ships") + 1;
+        let french = Language::in_display_order()
+            .iter()
+            .position(|l| l.tag() == "fr")
+            .expect("French ships")
+            + 1;
         app.settings_action(SettingsAction::Choose(Setting::Language.key(), french));
         assert_eq!(app.settings().general.language.as_deref(), Some("fr"));
         assert_eq!(app.language().tag(), "fr");
         assert_eq!(app.settings_content().title, "Général");
-        let english = Language::all().position(|l| l.tag() == "en").expect("English ships") + 1;
+        let english = Language::in_display_order()
+            .iter()
+            .position(|l| l.tag() == "en")
+            .expect("English ships")
+            + 1;
         app.settings_action(SettingsAction::Choose(Setting::Language.key(), english));
         assert_eq!(app.language().tag(), "en");
         // Back to automatic: the Windows languages decide again.

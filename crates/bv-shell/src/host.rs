@@ -84,6 +84,8 @@ pub struct ShellConfig {
     /// only the settings window is used, and the message window is not the one other
     /// launches look for.
     pub tray: bool,
+    /// Language of the texts, as a locale name (see [`Shell::set_text_locale`]).
+    pub text_locale: String,
 }
 
 /// A primary action on the tray icon, to hand to [`Shell::toggle_flyout`].
@@ -184,6 +186,8 @@ pub struct Shell {
     pub(crate) bubble_state: RefCell<crate::bubble::BubbleState>,
     /// Name of the application (screen readers).
     pub(crate) app_name: RefCell<String>,
+    /// Language of the texts drawn (see [`Shell::set_text_locale`]).
+    text_locale: RefCell<String>,
     pub(crate) flyout_toggle: RefCell<FlyoutToggle>,
     /// The flyout is being hidden (its hiding sends messages that must not hide it again).
     pub(crate) flyout_closing: Cell<bool>,
@@ -230,6 +234,7 @@ impl Shell {
             bubble_popup: RefCell::new(None),
             bubble_state: RefCell::new(crate::bubble::BubbleState::default()),
             app_name: RefCell::new(String::new()),
+            text_locale: RefCell::new(String::new()),
             flyout_toggle: RefCell::new(FlyoutToggle::default()),
             flyout_closing: Cell::new(false),
             foreground_hook: Cell::new(None),
@@ -269,10 +274,24 @@ impl Shell {
         Some(graphics)
     }
 
+    /// Sets the language of the texts drawn from now on, as a locale name (`ja`, `zh-Hans`):
+    /// Windows picks the fonts of Asian scripts from it. Call it when the language of the
+    /// interface changes; a call with the same language does nothing.
+    pub fn set_text_locale(&self, locale: &str) {
+        if *self.text_locale.borrow() == locale {
+            return;
+        }
+        locale.clone_into(&mut self.text_locale.borrow_mut());
+        if let Some(graphics) = self.graphics.borrow().as_ref() {
+            graphics.set_text_locale(locale);
+        }
+    }
+
     fn new_graphics(&self) -> Option<Graphics> {
         match Graphics::new(DeviceKind::Software) {
             Ok(graphics) => {
                 self.graphics_failed.set(false);
+                graphics.set_text_locale(&self.text_locale.borrow());
                 Some(graphics)
             }
             Err(error) => {
@@ -470,6 +489,7 @@ pub fn run<H: FnMut(&Shell, Event)>(
     let shell = Shell::new(window, config.tray);
     *shell.tooltip.borrow_mut() = config.tooltip;
     *shell.app_name.borrow_mut() = config.app_name;
+    *shell.text_locale.borrow_mut() = config.text_locale;
     shell.appearance.set(appearance::read());
     // An instance running with administrator rights must still hear a normal second
     // launch, the installer, the taskbar restarting, its own tray icon and the taskbar
