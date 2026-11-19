@@ -26,10 +26,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
     ChangeWindowMessageFilterEx, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
     GetMessageTime, GetMessageW, GetWindowLongPtrW, PostQuitMessage, RegisterClassW,
     RegisterWindowMessageW, SetWindowLongPtrW, TranslateMessage, GWLP_USERDATA, MSG, MSGFLT_ALLOW,
-    PBT_APMRESUMEAUTOMATIC, PBT_APMSUSPEND, WINDOW_EX_STYLE, WM_APP, WM_CLOSE, WM_CONTEXTMENU,
-    WM_DESTROY, WM_DPICHANGED, WM_DWMCOLORIZATIONCOLORCHANGED, WM_ERASEBKGND, WM_GETOBJECT,
-    WM_INPUT, WM_MBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WM_POWERBROADCAST, WM_SETTINGCHANGE,
-    WM_SYSCOLORCHANGE, WM_THEMECHANGED, WM_TIMER, WNDCLASSW, WS_OVERLAPPED,
+    PBT_APMRESUMEAUTOMATIC, PBT_APMSUSPEND, SPI_SETWORKAREA, WINDOW_EX_STYLE, WM_APP, WM_CLOSE,
+    WM_CONTEXTMENU, WM_DESTROY, WM_DPICHANGED, WM_DWMCOLORIZATIONCOLORCHANGED, WM_ERASEBKGND,
+    WM_GETOBJECT, WM_INPUT, WM_MBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WM_POWERBROADCAST,
+    WM_SETTINGCHANGE, WM_SYSCOLORCHANGE, WM_THEMECHANGED, WM_TIMER, WNDCLASSW, WS_OVERLAPPED,
 };
 
 use crate::input::FlyoutToggle;
@@ -601,6 +601,9 @@ extern "system" fn window_proc(
         }
         WM_SETTINGCHANGE | WM_SYSCOLORCHANGE | WM_THEMECHANGED | WM_DWMCOLORIZATIONCOLORCHANGED => {
             shell.refresh_appearance();
+            if message == WM_SETTINGCHANGE && taskbar_layout_changed(wparam, lparam) {
+                shell.volume_icon_layout_changed();
+            }
             // SAFETY: forwarding the unmodified message to the default procedure.
             unsafe { DefWindowProcW(window, message, wparam, lparam) }
         }
@@ -764,6 +767,30 @@ fn power_event(wparam: WPARAM) -> Option<Event> {
     }
 }
 
+/// Whether a setting change may come from the taskbar being laid out again: the work area
+/// changed (`SPI_SETWORKAREA`: the taskbar moved, changed size or auto-hide), or Explorer
+/// announced new taskbar settings (`lparam` names the "TraySettings" section).
+fn taskbar_layout_changed(wparam: WPARAM, lparam: LPARAM) -> bool {
+    if wparam.0 as u32 == SPI_SETWORKAREA.0 {
+        return true;
+    }
+    let text = lparam.0 as *const u16;
+    if text.is_null() {
+        return false;
+    }
+    let wanted: Vec<u16> = "TraySettings".encode_utf16().collect();
+    // SAFETY: with a non-zero `lparam`, WM_SETTINGCHANGE carries a NUL-terminated string
+    // valid for the call; reading stops at its NUL or one unit past the length compared.
+    unsafe {
+        for (i, unit) in wanted.iter().enumerate() {
+            if *text.add(i) != *unit {
+                return false;
+            }
+        }
+        *text.add(wanted.len()) == 0
+    }
+}
+
 /// Decodes a tray callback (NOTIFYICON_VERSION_4 layout: the low word of `lparam` is the
 /// notification, `wparam` holds the anchor position as two signed 16-bit values).
 fn tray_event(wparam: WPARAM, lparam: LPARAM, time: u32) -> Option<Event> {
@@ -891,6 +918,25 @@ mod tests {
         assert_eq!(power_event(WPARAM(PBT_APMRESUMEAUTOMATIC as usize)), Some(Event::Resumed));
         assert_eq!(power_event(WPARAM(PBT_APMRESUMESUSPEND as usize)), None);
         assert_eq!(power_event(WPARAM(PBT_APMSUSPEND as usize)), Some(Event::Suspending));
+    }
+
+    #[test]
+    fn taskbar_layout_changes_are_recognised() {
+        let text = |s: &str| s.encode_utf16().chain([0]).collect::<Vec<u16>>();
+        let none = LPARAM(0);
+        assert!(taskbar_layout_changed(WPARAM(SPI_SETWORKAREA.0 as usize), none));
+        assert!(!taskbar_layout_changed(WPARAM(0), none));
+        for (name, expected) in [
+            ("TraySettings", true),
+            ("ImmersiveColorSet", false),
+            ("Tray", false),
+            ("TraySettingsMore", false),
+            ("", false),
+        ] {
+            let wide = text(name);
+            let lparam = LPARAM(wide.as_ptr() as isize);
+            assert_eq!(taskbar_layout_changed(WPARAM(0), lparam), expected, "{name}");
+        }
     }
 
     #[test]

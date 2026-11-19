@@ -109,8 +109,8 @@ pointer (auto-hidden taskbar cut out).
 | Menu close | none | — | disappears (Windows menus) |
 | Tooltip | 500 ms delay | — | appears in place, no motion |
 | Flyout height change ("fits the content" only) | 250 ms | decelerate | the edge away from the taskbar moves; the content above the application list stays, the master volume and footer stay against the taskbar, the list is revealed or cut |
-| Bubble open | 250 ms | decelerate | rises from behind the taskbar edge (horizontal taskbar, no full-screen program in front; in place otherwise), stepped by a 10 ms timer: the UI thread is never held |
-| Bubble close | 167 ms | accelerate | sinks back behind the taskbar edge, about 2 s after the last update |
+| Bubble open | 250 ms | decelerate | rises from the bottom edge of the screen whatever the taskbar position (from behind a bottom taskbar; in place when a full-screen program is in front), stepped by a 10 ms timer: the UI thread is never held |
+| Bubble close | 167 ms | accelerate | sinks back to the bottom edge, about 2 s after the last update |
 
 The whole window moves, frame and material included, one position per compositor frame,
 placed just below the taskbar in the z-order so the part not yet risen is hidden behind
@@ -348,9 +348,10 @@ glyph, bar and number to the pixel.
   Opaque fill `controls.solid` (`#2C2C2C` dark, `#F9F9F9` light; the indicator's
   material looks opaque); shell theme (system mode); high contrast: system colours and
   an outline.
-- Place: centred on the usable area of the taskbar's monitor, 14 DIP from the taskbar
-  (truncated to pixels: 31 px at 225 %, as measured); a vertical taskbar puts it at the
-  bottom centre.
+- Place: bottom centre of the usable area of the taskbar's monitor, 14 DIP above its
+  bottom (truncated to pixels: 31 px at 225 %, as measured), whatever the taskbar
+  position: above a bottom taskbar, above the screen's bottom edge with a taskbar at the
+  top or on a side, as the Windows indicator does. It always rises from the bottom edge.
 - Volume content: 192 × 48 at 100 % text (the height grows with the text, the width with
   the number); volume glyph 16 at x 13 (the Windows step glyph, muted included), text
   colour; level bar from x 42, 110 long, 4 thick, rounded: accent up to the level,

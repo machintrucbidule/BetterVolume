@@ -351,6 +351,11 @@ Decision: a small in-taskbar helper shipped with the app.
   0, 1 or -1 of a process ended on purpose), or ended that soon for the second time in a
   row (whatever the code), the shell stops and reports an incident instead: the option turns off and the settings window opens on the
   General page, scrolled to the notice under the switch.
+- **Taskbar laid out again** (no `TaskbarCreated`): moving the taskbar to another edge,
+  changing its size or auto-hide rebuilds its tray with a new, visible volume icon. The
+  shell treats `WM_SETTINGCHANGE` with `SPI_SETWORKAREA`, or naming "TraySettings", as such
+  a change and, while the icon is wanted hidden, loads the helper again 3 s after the last
+  one (the timer restarts at each message, so a burst of changes gives one load).
 - **Our own icon**: turning the option on also sets `IsPromoted` = 1 in Windows'
   record of this executable's tray icon (`HKCU\Control Panel\NotifyIconSettings\*`, matched
   by executable path, known-folder prefixes resolved, and icon id); the taskbar follows it

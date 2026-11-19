@@ -871,11 +871,13 @@ mod tests {
         app.settings_action(SettingsAction::Toggle(Setting::VolumeBubble.key(), false));
         assert!(!app.settings().general.volume_bubble);
         assert!(app.volume_bubble(false).is_none());
-        // The flyout height: full by default, fitting the content on demand.
+        // The flyout height: fitting the content by default, the whole height on demand.
+        assert_eq!(app.flyout_content().height, bv_ui_kit::controls::flyout::PanelHeight::Content);
+        app.settings_action(SettingsAction::Choose(Setting::FlyoutHeight.key(), 0));
+        assert_eq!(app.settings().general.flyout_height, FlyoutHeight::Full);
         assert_eq!(app.flyout_content().height, bv_ui_kit::controls::flyout::PanelHeight::Full);
         app.settings_action(SettingsAction::Choose(Setting::FlyoutHeight.key(), 1));
         assert_eq!(app.settings().general.flyout_height, FlyoutHeight::Content);
-        assert_eq!(app.flyout_content().height, bv_ui_kit::controls::flyout::PanelHeight::Content);
         // Out-of-range choices change nothing.
         app.settings_action(SettingsAction::Choose(Setting::Wheel.key(), 10));
         app.settings_action(SettingsAction::Choose(Setting::Scope.key(), 3));

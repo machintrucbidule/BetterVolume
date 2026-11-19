@@ -126,22 +126,13 @@ pub(crate) fn menu_origin(
     (clamp(x, area.left, area.right - w), clamp(y, area.top, area.bottom - h))
 }
 
-/// Top-left corner of the bubble: centred along the usable area, `gap` pixels
-/// from a horizontal taskbar, where the Windows 11 volume indicator appears. With a
-/// vertical taskbar it stands at the bottom centre of the area, the same gap from the
-/// monitor's bottom edge.
-pub(crate) fn bubble_origin(
-    size: (i32, i32),
-    area: &ScreenRect,
-    edge: Edge,
-    gap: i32,
-) -> (i32, i32) {
+/// Top-left corner of the bubble: at the bottom centre of the usable area, `gap` pixels
+/// above its bottom, where the Windows 11 volume indicator appears whatever the taskbar
+/// position (above a bottom taskbar, the gap from the monitor's bottom edge otherwise).
+pub(crate) fn bubble_origin(size: (i32, i32), area: &ScreenRect, gap: i32) -> (i32, i32) {
     let (w, h) = size;
     let x = area.left + (area.width() - w) / 2;
-    let y = match edge {
-        Edge::Top => area.top + gap,
-        Edge::Bottom | Edge::Left | Edge::Right => area.bottom - gap - h,
-    };
+    let y = area.bottom - gap - h;
     (x.max(area.left), y.max(area.top))
 }
 
@@ -263,16 +254,17 @@ mod tests {
         // Measured on the Windows indicator at 225 %: 432 x 108, 31 px above the taskbar,
         // centred on a 3840-wide monitor.
         let area = ScreenRect::new(0, 0, 3840, 2052);
-        assert_eq!(bubble_origin((432, 108), &area, Edge::Bottom, 31), (1704, 1913));
+        assert_eq!(bubble_origin((432, 108), &area, 31), (1704, 1913));
+        // A taskbar at the top or on a side: still at the bottom centre, like Windows.
         let top = ScreenRect::new(0, 48, 1920, 1080);
-        assert_eq!(bubble_origin((192, 48), &top, Edge::Top, 14), (864, 62));
+        assert_eq!(bubble_origin((192, 48), &top, 14), (864, 1018));
         let left = ScreenRect::new(62, 0, 1920, 1080);
-        assert_eq!(bubble_origin((192, 48), &left, Edge::Left, 14), (895, 1018));
+        assert_eq!(bubble_origin((192, 48), &left, 14), (895, 1018));
         // A monitor left of the primary one; a bubble wider than the area stays inside.
         let negative = ScreenRect::new(-1920, 0, 0, 1032);
-        assert_eq!(bubble_origin((192, 48), &negative, Edge::Bottom, 14), (-1056, 970));
+        assert_eq!(bubble_origin((192, 48), &negative, 14), (-1056, 970));
         let narrow = ScreenRect::new(0, 0, 100, 1032);
-        assert_eq!(bubble_origin((192, 48), &narrow, Edge::Bottom, 14).0, 0);
+        assert_eq!(bubble_origin((192, 48), &narrow, 14).0, 0);
     }
 
     #[test]

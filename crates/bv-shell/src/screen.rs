@@ -131,10 +131,16 @@ pub(crate) fn taskbar_under(x: i32, y: i32) -> bool {
     !window.is_invalid() && taskbar_surface(window).unwrap_or(true)
 }
 
+/// Classes of the hidden-icons panel (the overflow opened by the arrow next to the tray
+/// icons): the Windows 11 one, and the classic one that third-party taskbars (such as
+/// ExplorerPatcher or StartAllBack) bring back.
+const HIDDEN_ICONS_CLASSES: [&str; 2] =
+    ["TopLevelWindowForOverflowXamlIsland", "NotifyIconOverflowWindow"];
+
 /// Classes of the taskbar surfaces: the main and secondary taskbars and the hidden-icons
-/// panel (other windows of the same Explorer process, such as File Explorer, are not).
-const TASKBAR_SURFACES: [&str; 3] =
-    ["Shell_TrayWnd", "Shell_SecondaryTrayWnd", "TopLevelWindowForOverflowXamlIsland"];
+/// panels (other windows of the same Explorer process, such as File Explorer, are not).
+const TASKBAR_SURFACES: [&str; 4] =
+    ["Shell_TrayWnd", "Shell_SecondaryTrayWnd", HIDDEN_ICONS_CLASSES[0], HIDDEN_ICONS_CLASSES[1]];
 
 /// Whether a window is part of the taskbar (see [`TASKBAR_SURFACES`]); `None` when the
 /// window is unknown.
@@ -151,10 +157,6 @@ pub(crate) fn taskbar_surface(window: HWND) -> Option<bool> {
     };
     (!class.is_empty()).then(|| TASKBAR_SURFACES.contains(&class.as_str()))
 }
-
-/// Class of the Windows 11 hidden-icons panel (the overflow opened by the arrow next to
-/// the tray icons).
-const HIDDEN_ICONS_CLASS_NAME: &str = "TopLevelWindowForOverflowXamlIsland";
 
 /// Whether the hidden-icons panel is open: a popup opened from it must appear in place,
 /// on top, rather than rise from behind the taskbar (it would pass under the panel).
@@ -173,7 +175,8 @@ pub(crate) fn hidden_icons_open() -> bool {
             let mut name = [0u16; 64];
             let len = GetClassNameW(current, &mut name);
             let class = String::from_utf16_lossy(&name[..len.max(0) as usize]);
-            if class == HIDDEN_ICONS_CLASS_NAME && IsWindowVisible(current).as_bool() {
+            if HIDDEN_ICONS_CLASSES.contains(&class.as_str()) && IsWindowVisible(current).as_bool()
+            {
                 return true;
             }
             window = GetWindow(current, GW_HWNDNEXT).ok();

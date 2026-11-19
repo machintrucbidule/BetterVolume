@@ -237,6 +237,19 @@ impl Shell {
         false
     }
 
+    /// The taskbar was laid out again without being re-created (its position, its size or
+    /// auto-hide changed): Windows then builds a new, visible volume icon. When the icon
+    /// is wanted hidden, hide it again a little later (repeated changes push the load back,
+    /// so it runs once the taskbar has settled).
+    pub(crate) fn volume_icon_layout_changed(&self) {
+        let state = &self.volume_icon;
+        if !state.wanted.get() {
+            return;
+        }
+        state.retries.set(RETRIES);
+        self.schedule_volume_icon_load();
+    }
+
     /// An outcome arrived (helper message, or failed child). Returns the outcome to report,
     /// or `None` when it is stale or a retry is under way.
     pub(crate) fn volume_icon_outcome(

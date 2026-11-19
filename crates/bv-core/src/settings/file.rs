@@ -701,7 +701,7 @@ mod tests {
         settings.general.volume_bubble = false;
         settings.general.tray_icon_style = TrayIconStyle::WithDeviceBadge;
         settings.general.tray_icon_size = TrayIconSize::Large;
-        settings.general.flyout_height = FlyoutHeight::Content;
+        settings.general.flyout_height = FlyoutHeight::Full;
         settings.general.apps_section_expanded = false;
         settings.general.first_run_done = true;
         settings.general.volume_icon_question_done = true;

@@ -95,9 +95,9 @@ pub enum TrayIconSize {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum FlyoutHeight {
     /// The whole height of the screen: the panel never changes size.
-    #[default]
     Full,
-    /// As tall as its content.
+    /// As tall as its content (the default).
+    #[default]
     Content,
 }
 
@@ -425,7 +425,7 @@ mod tests {
         assert!(general.volume_bubble);
         assert_eq!(general.tray_icon_style, TrayIconStyle::SameAsWindows);
         assert_eq!(general.tray_icon_size, TrayIconSize::SameAsWindows);
-        assert_eq!(general.flyout_height, FlyoutHeight::Full);
+        assert_eq!(general.flyout_height, FlyoutHeight::Content);
         assert!(!general.hide_windows_volume_icon);
         assert!(general.check_updates);
         assert!(general.apps_section_expanded);

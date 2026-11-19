@@ -93,10 +93,11 @@ pub const MENU_OPEN: Transition = Transition { duration_ms: 200, easing: CubicBe
 /// milliseconds: after an output switch, an application's sound reaches the new output a
 /// moment later, and its row must not disappear and come back.
 pub const ROW_REMOVAL_HOLD_MS: u32 = 1000;
-/// Bubble entrance (FR-105): rises from behind the taskbar edge, like the flyout.
+/// Bubble entrance (FR-105): rises from the bottom edge of the screen (from behind a bottom
+/// taskbar), like the Windows volume indicator.
 pub const BUBBLE_OPEN: Transition =
     Transition { duration_ms: 250, easing: CubicBezier::DECELERATE };
-/// Bubble exit: sinks back behind the taskbar edge.
+/// Bubble exit: sinks back to the bottom edge of the screen.
 pub const BUBBLE_CLOSE: Transition =
     Transition { duration_ms: 167, easing: CubicBezier::ACCELERATE };
 /// Period of the timer driving the bubble's motion, in milliseconds. The bubble moves

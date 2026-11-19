@@ -53,10 +53,14 @@ pub(crate) struct BubbleState {
     size: (i32, i32),
 }
 
-/// Whether the bubble rises from behind the taskbar (a horizontal one) rather than
-/// appearing in place.
-fn rises(edge: Edge, animations: bool, fullscreen: bool) -> bool {
-    animations && !fullscreen && matches!(edge, Edge::Bottom | Edge::Top)
+/// The edge the bubble rises from. Like the Windows volume indicator, it stays at the
+/// bottom centre of the screen whatever the taskbar position (measured with a taskbar at
+/// the top, left and right), so it always moves as with a bottom taskbar.
+const EDGE: Edge = Edge::Bottom;
+
+/// Whether the bubble rises from the bottom edge rather than appearing in place.
+fn rises(animations: bool, fullscreen: bool) -> bool {
+    animations && !fullscreen
 }
 
 impl Shell {
@@ -93,7 +97,7 @@ impl Shell {
             ((size_dip.width * scale).round() as i32, (size_dip.height * scale).round() as i32);
         // Truncated: 14 DIP at 225 % is 31 px, as measured on the Windows indicator.
         let gap = (GAP * scale) as i32;
-        let target = bubble_origin(size, &layout.area, layout.edge, gap);
+        let target = bubble_origin(size, &layout.area, gap);
         let paint =
             |c: &mut bv_ui_kit::backend::Canvas<'_>| bubble::paint(c, &theme, &content, size_dip);
         let motion = self.bubble_state.borrow().motion;
@@ -131,15 +135,14 @@ impl Shell {
             else {
                 return;
             };
-            let motion =
-                if rises(layout.edge, theme.animations, crate::screen::fullscreen_in_front()) {
-                    let start = hidden_origin(target, size, &layout.monitor, layout.edge);
-                    popup.show_passive(&graphics, layout, start, true);
-                    Motion::Rising { started: Instant::now(), from: start, to: target }
-                } else {
-                    popup.show_passive(&graphics, layout, target, false);
-                    Motion::Still
-                };
+            let motion = if rises(theme.animations, crate::screen::fullscreen_in_front()) {
+                let start = hidden_origin(target, size, &layout.monitor, EDGE);
+                popup.show_passive(&graphics, layout, start, true);
+                Motion::Rising { started: Instant::now(), from: start, to: target }
+            } else {
+                popup.show_passive(&graphics, layout, target, false);
+                Motion::Still
+            };
             self.bubble_state.borrow_mut().motion = motion;
         }
         {
@@ -268,12 +271,12 @@ impl Shell {
             self.hide_bubble();
             return;
         };
-        if !rises(layout.edge, self.theme().animations, crate::screen::fullscreen_in_front()) {
+        if !rises(self.theme().animations, crate::screen::fullscreen_in_front()) {
             self.hide_bubble();
             return;
         }
         let from = popup.origin();
-        let to = hidden_origin(from, size, &layout.monitor, layout.edge);
+        let to = hidden_origin(from, size, &layout.monitor, EDGE);
         popup.lower(&graphics);
         self.bubble_state.borrow_mut().motion =
             Motion::Sinking { started: Instant::now(), from, to };
@@ -311,13 +314,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_bubble_rises_only_from_a_horizontal_taskbar_with_animations_on() {
-        assert!(rises(Edge::Bottom, true, false));
-        assert!(rises(Edge::Top, true, false));
-        assert!(!rises(Edge::Left, true, false));
-        assert!(!rises(Edge::Right, true, false));
-        assert!(!rises(Edge::Bottom, false, false));
+    fn the_bubble_rises_from_the_bottom_with_animations_on() {
+        assert_eq!(EDGE, Edge::Bottom);
+        assert!(rises(true, false));
+        assert!(!rises(false, false));
         // A full-screen program hides the taskbar layer: the bubble appears in place.
-        assert!(!rises(Edge::Bottom, true, true));
+        assert!(!rises(true, true));
     }
 }

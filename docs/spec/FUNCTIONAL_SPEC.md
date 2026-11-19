@@ -66,11 +66,11 @@ Wording: **must** = required for v1.
   loss, on Escape, and on a second click on the tray icon.
 - **FR-022** Opening is perceived as instant (target defined in the architecture budget).
 - **FR-023** Panel height, chosen in the settings (FR-082):
-  - *Whole screen height* (default): the panel takes the whole height of
+  - *Whole screen height*: the panel takes the whole height of
     the work area, with the Windows 11 gaps; it never changes size and the tiles never
     move, whatever the device, the tab or the applications. The free space lies between
     the tiles and the application list, which stands right above the master volume.
-  - *Fits the content*: the height follows the content (changes animated), the
+  - *Fits the content* (default): the height follows the content (changes animated), the
     list right below the tiles.
   In both, only the application list scrolls, and only when it does not fit (in the space
   left, or on the screen); tiles and master volume always stay visible.
@@ -188,7 +188,8 @@ Wording: **must** = required for v1.
   works also when it is off. Beside it, "Receive preview versions" (off by
   default).
 - **FR-081** Volume bubble of the wheel and middle click (FR-017): on/off (default on).
-- **FR-082** Flyout height: "Whole screen height" (default) or "Fits the content" (FR-023).
+- **FR-082** Flyout height: "Fits the content" (default) or "Whole screen height" (FR-023).
+  A choice already saved is kept.
 - **FR-083** Tray icon size: "Same as Windows" (default) or "Large", in both icon styles
   (FR-011), applied at once. The Windows volume glyph already spans the whole width of
   the square Windows gives a notification-area icon (the loudest step touches both
@@ -256,7 +257,8 @@ Wording: **must** = required for v1.
 ## 7. Device-switch bubble
 
 - **FR-105** Small custom bubble, Windows 11 volume-indicator style, at the bottom centre of
-  the screen just above the taskbar, where Windows shows its own volume indicator:
+  the screen (just above the taskbar when it is at the bottom), where Windows shows its own
+  volume indicator whatever the taskbar position:
   device icon + display name + kind ("Audio output" / "Microphone", with "· calls" when
   only the calls device changed). Appears on every change of a default device
   (output, and microphone while microphone management is on; media or calls) whatever the
