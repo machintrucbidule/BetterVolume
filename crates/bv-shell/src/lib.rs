@@ -46,6 +46,7 @@ mod update;
 mod waker;
 mod wide;
 
+pub use appicon::app_icon;
 pub use autostart::{autostart_enabled, autostart_enabled_for, set_autostart};
 pub use host::{run, Event, Shell, ShellConfig, TrayActivation};
 pub use install::{

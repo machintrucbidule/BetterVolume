@@ -1,11 +1,19 @@
 # BetterVolume
 
-A lightweight Windows 11 tray utility for audio that uses only a few MB of memory:
-one-click output switching, per-app and microphone volume, a native Windows 11 look, and
-Home Assistant control over MQTT.
+[![Latest release](https://img.shields.io/github/v/release/machintrucbidule/BetterVolume?label=release)](https://github.com/machintrucbidule/BetterVolume/releases/latest)
+[![Tests](https://img.shields.io/github/actions/workflow/status/machintrucbidule/BetterVolume/ci.yml?branch=main&label=tests)](https://github.com/machintrucbidule/BetterVolume/actions/workflows/ci.yml)
+[![MIT licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+[![Windows 11](https://img.shields.io/badge/Windows-11-0078D4?logo=windows11&logoColor=white)](#requirements)
+[![Made with Rust](https://img.shields.io/badge/made%20with-Rust-B7410E?logo=rust&logoColor=white)](#building-from-source)
+[![About 3 MB of memory when idle](https://img.shields.io/badge/idle%20memory-~3%20MB-2EA44F)](#features)
+
+**The volume panel Windows 11 should have had.** One click on the tray icon to switch
+between your speakers, headset and TV, set each application's volume, and control it all
+from Home Assistant, in a panel that looks and moves like Windows 11, for a few
+megabytes of memory.
 
 <p align="center">
-  <img src="docs/images/flyout.png" alt="The BetterVolume panel: output and microphone tabs, one tile per output device, the applications section and the volume slider" width="405">
+  <img src="docs/images/demo.webp" alt="Animated demo: a click on the tray icon opens the panel; the output is switched from the speakers to the headset, Firefox's volume is lowered, the application list is folded, Windows changes from dark to light and the panel follows, then it closes" width="440">
 </p>
 
 ## Features
@@ -28,13 +36,22 @@ Home Assistant control over MQTT.
 - **Home Assistant.** Each PC appears as a device with its output, volume, mute,
   microphone and media buttons, updated live in both directions.
 - **Can replace the Windows volume icon** (optional, off by default, see below).
-- **Light.** A few megabytes of memory, and practically no processor time while it waits
+- **Light.** A few megabytes of memory (about 3 MB at rest, about 7 to 10 MB once the panel
+  has been used with Home Assistant on), and practically no processor time while it waits
   (it only reacts to events).
 - In English, French, German, Spanish, Italian, Portuguese (Brazil), Dutch, Polish,
   Japanese and Simplified Chinese; it follows the Windows display language.
 
 <p align="center">
-  <img src="docs/images/settings.png" alt="The BetterVolume settings window, General page" width="800">
+  <img src="docs/images/panel.png" alt="The BetterVolume panel in the dark and the light theme: output and microphone tabs, one tile per output device, the applications with their volumes, the master volume" width="660">
+</p>
+
+<p align="center">
+  <img src="docs/images/bubble.png" alt="The bubble shown above the taskbar when the output changes (here to the headset), in the dark and the light theme, with BetterVolume's tray icon" width="440">
+</p>
+
+<p align="center">
+  <img src="docs/images/settings.png" alt="The BetterVolume settings window, Devices page: outputs and microphones that can be renamed, reordered, given another icon or hidden" width="735">
 </p>
 
 ## Requirements
@@ -193,3 +210,23 @@ same keys and placeholders as English. Contributions are welcome.
 ## Licence
 
 [MIT](LICENSE)
+
+## Why a version 2
+
+The first BetterVolume was a small tool I wrote in C# (.NET) about fifteen years ago for
+my own use, and it served me every day since. Over time it aged: it looked out of place
+on Windows 11, and Windows updates kept breaking parts of it. Rather than patch it once
+more, I decided to rebuild it from scratch with Claude. Version 2 is that rebuild,
+rewritten in Rust with the Windows 11 look and a fraction of the memory: it keeps what
+the first one did and adds Home Assistant control, settings and more languages.
+
+## How this project is made
+
+BetterVolume is developed by Claude, Anthropic's AI: it wrote the code, the tests and the
+documentation, under the direction of the project's author. Quality does not rest on
+trust: every change must pass the automated tests and checks (formatting, lints, the
+memory and CPU budget), is read by a second, independent AI before it is kept, and each
+version is tried by hand on a real PC before it is released.
+
+The images on this page are drawn by the application's own code, not captured from a
+screen (`crates/bv-app/src/app/readme.rs`, composed by `tools/readme-images.py`).

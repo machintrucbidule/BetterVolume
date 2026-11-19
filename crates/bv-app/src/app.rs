@@ -34,6 +34,9 @@ mod volume_icon;
 // Language sheets (images for a visual check of the translations, run on demand).
 #[cfg(test)]
 mod sheets;
+// Documentation images (rendered layers for the README, run on demand).
+#[cfg(test)]
+mod readme;
 
 pub use apps_page::ProcessList;
 pub use flyout::FlyoutEffect;

@@ -72,6 +72,13 @@ fn expand(path: &str) -> Vec<u16> {
     buffer
 }
 
+/// The icon of an executable or icon file (`path` or `path,index`, `%VARIABLE%` parts
+/// expanded) at `pixels` × `pixels`, as the flyout rows show it; `None` without one. For
+/// images drawn outside the shell (the documentation images).
+pub fn app_icon(source: &str, pixels: u32, graphics: &Graphics) -> Option<Pixels> {
+    load(source, pixels, graphics)
+}
+
 fn load(source: &str, pixels: u32, graphics: &Graphics) -> Option<Pixels> {
     let (path, index) = split_source(source);
     if path.is_empty() {
