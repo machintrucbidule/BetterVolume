@@ -19,7 +19,7 @@ use bv_audio::fake::FakeEngine;
 use bv_audio::{AppKey, Bus, DeviceInfo, DeviceState, Flow, FormFactor, Stream};
 use bv_core::devices::KnownDevice;
 use bv_core::i18n::{Language, Msg};
-use bv_core::settings::{FlyoutHeight, Settings};
+use bv_core::settings::{FlyoutHeight, Settings, TrayIconSize, TrayIconStyle};
 use bv_ui_kit::access::{AccessNode, AccessRole};
 use bv_ui_kit::backend::{DeviceKind, Graphics, Pixels, TextAlign};
 use bv_ui_kit::controls::bubble::{self, BubbleContent};
@@ -50,8 +50,8 @@ const POINTER: bv_ui_kit::motion::CubicBezier =
     bv_ui_kit::motion::CubicBezier { x1: 0.45, y1: 0.0, x2: 0.2, y2: 1.0 };
 /// One animation frame, in milliseconds.
 const FRAME_MS: u32 = 40;
-/// Settings window size for its image.
-const SETTINGS: (f32, f32) = (900.0, 640.0);
+/// Settings window size for its image (the whole General page fits).
+const SETTINGS: (f32, f32) = (900.0, 1000.0);
 /// Application icons, by executable: the icons installed on the PC that draws the images.
 const ICONS: [(&str, &str); 2] = [
     ("firefox.exe", r"%ProgramFiles%\Mozilla Firefox\firefox.exe"),
@@ -123,8 +123,9 @@ fn app() -> App<FakeEngine> {
     settings.general.flyout_height = FlyoutHeight::Content;
     settings.general.first_run_done = true;
     settings.general.volume_icon_question_done = true;
+    settings.general.hide_windows_volume_icon = true;
     settings.devices.outputs = vec![
-        known("spk", "Speakers", DeviceIcon::DesktopSpeakers),
+        known("spk", "Speakers", DeviceIcon::BookshelfSpeakers),
         known("hs", "Headset", DeviceIcon::GamingHeadset),
         known("tv", "TV", DeviceIcon::Tv),
     ];
@@ -623,9 +624,12 @@ fn bubble_scene(out: &mut Output, mode: ThemeMode) -> String {
 /// The settings window on its Devices page.
 fn settings_scene(out: &mut Output, mode: ThemeMode) -> String {
     let mut app = app();
+    // The tray icon options as the tray image shows them.
+    app.settings.general.tray_icon_style = TrayIconStyle::WithDeviceBadge;
+    app.settings.general.tray_icon_size = TrayIconSize::Large;
     app.settings_opening(false);
     app.settings_action(bv_ui_kit::controls::settings::SettingsAction::SelectPage(
-        Page::Devices.key(),
+        Page::General.key(),
     ));
     let content = app.settings_content();
     let mut theme = Theme::app(&ThemeInputs { apps_mode: mode, ..ThemeInputs::default() });
@@ -667,6 +671,30 @@ fn settings_scene(out: &mut Output, mode: ThemeMode) -> String {
 /// Height of a standard Windows 11 title bar.
 const CAPTION_HEIGHT: f32 = 32.0;
 
+/// The tray icon in the "with device badge" style and the "Large" size, for each of the
+/// three outputs, in a theme: the taskbar corner with each output current.
+fn tray_scenes(out: &mut Output, mode: ThemeMode) -> Vec<String> {
+    ["spk", "hs", "tv"]
+        .into_iter()
+        .map(|id| {
+            let mut app = app();
+            app.settings.general.tray_icon_style = TrayIconStyle::WithDeviceBadge;
+            app.settings.general.tray_icon_size = TrayIconSize::Large;
+            app.engine.defaults[Flow::Output.index()] = [Some(id.into()), Some(id.into())];
+            app.engine.sync();
+            app.on_audio_signals();
+            let (taskbar, icon) = out.taskbar(&app, mode, false);
+            format!(
+                "{{\"mode\": \"{}\", \"device\": \"{id}\", \"taskbar\": \"{taskbar}\", \
+                 \"icon\": [{:.2}, {:.2}]}}",
+                mode_name(mode),
+                icon.x,
+                icon.y
+            )
+        })
+        .collect()
+}
+
 #[test]
 #[ignore = "writes the documentation images' layers; run on demand (see the module documentation)"]
 fn readme_images() {
@@ -681,11 +709,16 @@ fn readme_images() {
     let bubbles = [ThemeMode::Dark, ThemeMode::Light].map(|m| bubble_scene(output, m)).join(", ");
     let settings =
         [ThemeMode::Dark, ThemeMode::Light].map(|m| settings_scene(output, m)).join(", ");
+    let trays = [ThemeMode::Dark, ThemeMode::Light]
+        .into_iter()
+        .flat_map(|m| tray_scenes(output, m))
+        .collect::<Vec<_>>()
+        .join(", ");
     let frames = demo(output);
     let json = format!(
         "{{\n  \"scale\": {SCALE},\n  \"scene\": [{}, {}],\n  \"taskbar\": {TASKBAR},\n  \
          \"layers\": {{{}}},\n  \"panels\": [{panels}],\n  \"bubbles\": [{bubbles}],\n  \
-         \"settings\": [{settings}],\n  \"frames\": [\n    {frames}\n  ]\n}}\n",
+         \"settings\": [{settings}],\n  \"trays\": [{trays}],\n  \"frames\": [\n    {frames}\n  ]\n}}\n",
         SCENE.0, SCENE.1, output.sizes
     );
     std::fs::write(output.out.join("scenes.json"), json).expect("scenes");

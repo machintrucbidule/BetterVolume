@@ -8,9 +8,9 @@
 [![About 3 MB of memory when idle](https://img.shields.io/badge/idle%20memory-~3%20MB-2EA44F)](#features)
 
 **The volume panel Windows 11 should have had.** One click on the tray icon to switch
-between your speakers, headset and TV, set each application's volume, and control it all
-from Home Assistant, in a panel that looks and moves like Windows 11, for a few
-megabytes of memory.
+between your speakers, headset and TV and set each application's volume, in a panel that
+looks and moves like Windows 11, for a few megabytes of memory. Optionally linked to
+Home Assistant.
 
 <p align="center">
   <img src="docs/images/demo.webp" alt="Animated demo: a click on the tray icon opens the panel; the output is switched from the speakers to the headset, Firefox's volume is lowered, the application list is folded, Windows changes from dark to light and the panel follows, then it closes" width="440">
@@ -24,7 +24,8 @@ megabytes of memory.
   a microphone view (input device, level, mute) that can be turned off.
 - **From the tray icon.** The icon shows the volume level; the mouse wheel over it changes
   the volume, a middle click mutes, a right click opens the Windows sound screens and the
-  settings. It can be shown larger than the other icons next to the clock.
+  settings. It can be enlarged to take the same room as the icons next to it, and can
+  show the current device (speakers, headphones, headset, TV) in place of the speaker.
 - **Looks like Windows 11.** The panel, the settings window and the small bubble shown
   when the device changes follow the Windows 11 design, light or dark theme and accent
   colour, and work with the keyboard and screen readers.
@@ -33,8 +34,10 @@ megabytes of memory.
 - **Your application list.** Every application that played sound is remembered: choose
   its place in the panel, hide the ones you do not want to see there (their sound is not
   touched), or sort them alphabetically.
-- **Home Assistant.** Each PC appears as a device with its output, volume, mute,
-  microphone and media buttons, updated live in both directions.
+- **Home Assistant** (optional). Each PC appears as a device with its output, volume,
+  mute, microphone and media buttons, updated live in both directions. Your automations
+  can then, for example, switch the sound to the TV when it turns on, raise the volume
+  while the robot vacuum runs, or lower it when someone rings at the door.
 - **Can replace the Windows volume icon** (optional, off by default, see below).
 - **Light.** A few megabytes of memory (about 3 MB at rest, about 7 to 10 MB once the panel
   has been used with Home Assistant on), and practically no processor time while it waits
@@ -51,7 +54,11 @@ megabytes of memory.
 </p>
 
 <p align="center">
-  <img src="docs/images/settings.png" alt="The BetterVolume settings window, Devices page: outputs and microphones that can be renamed, reordered, given another icon or hidden" width="735">
+  <img src="docs/images/tray.png" alt="BetterVolume's tray icon at the large size, showing the current output in place of the speaker: bookshelf speakers, then a headset, then a TV, on a dark and a light taskbar" width="438">
+</p>
+
+<p align="center">
+  <img src="docs/images/settings.png" alt="The BetterVolume settings window, General page: start with Windows, language, microphone management, switch scope, mouse wheel step, notification and volume bubbles, panel height, tray icon style and size, hiding the Windows volume icon" width="735">
 </p>
 
 ## Requirements

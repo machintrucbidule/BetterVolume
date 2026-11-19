@@ -11,6 +11,7 @@ outlines, and the pointer. It writes:
 
 - panel.png: the panel in the dark and the light theme, side by side;
 - settings.png: the settings window;
+- tray.png: the tray icon showing each output, dark and light;
 - bubble.png: the bubble above the taskbar, dark and light;
 - demo.webp: the animated demo.
 
@@ -228,6 +229,28 @@ def settings():
     save_png(scene, "settings.png")
 
 
+def trays():
+    """The tray icon showing each output (device badge, large size): the taskbar corner,
+    dark on the left, light on the right, one row per output."""
+    gap = px(6)
+    cells = {}
+    for entry in META["trays"]:
+        mode = entry["mode"]
+        scene = background(mode).copy()
+        taskbar(scene, mode, entry["taskbar"])
+        left = max(0, px(entry["icon"][0]) - px(70))
+        cells[(entry["device"], mode)] = scene.crop((left, H - TASKBAR, W, H))
+    devices = list(dict.fromkeys(e["device"] for e in META["trays"]))
+    w, h = next(iter(cells.values())).size
+    sheet = Image.new("RGBA", (w * 2 + gap, h * len(devices) + gap * (len(devices) - 1)), (0, 0, 0, 0))
+    for row, device in enumerate(devices):
+        for col, mode in enumerate(("dark", "light")):
+            sheet.paste(cells[(device, mode)], (col * (w + gap), row * (h + gap)))
+    path = os.path.join(DST, "tray.png")
+    sheet.save(path, optimize=True)
+    print("tray.png", sheet.size, os.path.getsize(path), "bytes")
+
+
 def frame_scene(frame, mode):
     index = 0 if mode == "dark" else 1
     scene = background(mode).copy()
@@ -272,4 +295,5 @@ os.makedirs(DST, exist_ok=True)
 panels()
 bubbles()
 settings()
+trays()
 demo()
