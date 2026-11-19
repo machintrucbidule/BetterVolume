@@ -16,12 +16,15 @@ Home Assistant control over MQTT.
   a microphone view (input device, level, mute) that can be turned off.
 - **From the tray icon.** The icon shows the volume level; the mouse wheel over it changes
   the volume, a middle click mutes, a right click opens the Windows sound screens and the
-  settings.
+  settings. It can be shown larger than the other icons next to the clock.
 - **Looks like Windows 11.** The panel, the settings window and the small bubble shown
   when the device changes follow the Windows 11 design, light or dark theme and accent
   colour, and work with the keyboard and screen readers.
 - **Your device list.** Rename devices, reorder them, choose their icon among 27 drawings,
   hide the ones you never use. Unplugged devices disappear and come back at their place.
+- **Your application list.** Every application that played sound is remembered: choose
+  its place in the panel, hide the ones you do not want to see there (their sound is not
+  touched), or sort them alphabetically.
 - **Home Assistant.** Each PC appears as a device with its output, volume, mute,
   microphone and media buttons, updated live in both directions.
 - **Can replace the Windows volume icon** (optional, off by default, see below).
