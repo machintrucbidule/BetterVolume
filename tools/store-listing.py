@@ -13,11 +13,14 @@ check: every limit Partner Center enforces (lengths, counts, the 21 different wo
 the search terms), and, given the images folder, that every listing has its six
 screenshots at 1920 x 1080.
 
-fill: Partner Center's "Export listings" file (UTF-8 .csv: Field, ID, Type, default,
-then one column per listing language) is copied into the import folder with every
-listing value written in, the images copied beside it; Partner Center's "Import listings
-→ Import folder" then takes the whole folder. The Field, ID and Type columns are never
-changed. The import folder must not exist yet: it is created only once every value has
+fill: Partner Center's "Export listings" file (UTF-8 .csv: Field, ID, Type (its heading
+translated into Partner Center's language), default, then one column per listing
+language; a "default" value serves every language whose own cell is empty) is copied
+into the import folder with every listing value written in, the images copied beside
+it; Partner Center's "Import listings → Import folder" then takes the whole folder. An
+image or video is named by its path from the folder's parent, the folder's own name
+first ("<folder>/<file>"), as Partner Center asks. The Field, ID and Type columns are
+never changed. The import folder must not exist yet: it is created only once every value has
 found its place. A field with no row in the export, or a listing language with no
 column (or several) when the export has language columns, stops the script before
 anything is written.
@@ -199,8 +202,10 @@ def fill(exported, images, target):
         sys.exit(f"{target} already exists: give a new folder (it is created and filled)")
     with open(exported, encoding="utf-8-sig", newline="") as f:
         rows = list(csv.reader(f))
-    if not rows or rows[0][:4] != ["Field", "ID", "Type", "default"]:
-        sys.exit(f"{exported} is not a listing export (first line: {rows[0][:4] if rows else 'none'})")
+    # The third heading is translated into Partner Center's language (e.g. "Type (Type)").
+    first = rows[0][:4] if rows else []
+    if len(first) < 4 or first[:2] != ["Field", "ID"] or not first[2].startswith("Type") or first[3] != "default":
+        sys.exit(f"{exported} is not a listing export (first line: {first or 'none'})")
     header = rows[0]
     fields = rows_by_field(rows)
     columns, problems = language_columns(header, languages())
@@ -219,16 +224,19 @@ def fill(exported, images, target):
 
     def asset(source, name):
         copies.append((source, name))
+        # Partner Center wants the folder's own name first, e.g. "my_folder/screenshot1.png".
         return f"{root}/{name}"
 
     # Every value is placed in memory first; nothing is written before all of them fit.
     shared = common()
     default = 3
-    put("CopyrightTrademarkInfo", default, shared["copyright"])
+    put("CopyrightTrademarkInformation", default, shared["copyright"])
     put("DevStudio", default, shared["developed_by"])
     put("Trailer1", default, asset(os.path.join(images, "video", "BetterVolume.mp4"), "BetterVolume.mp4"))
     put("TrailerThumbnail1", default, asset(os.path.join(images, "video", "thumbnail.png"), "trailer-thumbnail.png"))
-    put("SuperHeroArt1920x1080", default, asset(os.path.join(images, "hero.png"), "hero.png"))
+    # The 16:9 super hero art: the export's only non-Xbox 1920 x 1080 image row. With it,
+    # the trailers play at the top of the listing (TrailerToPlayAtTopOfListing stays empty).
+    put("PromoImage1920x1080", default, asset(os.path.join(images, "hero.png"), "hero.png"))
     for language, column in columns.items():
         text = load(language)
         # The reserved name (needed for a language without a package; the same otherwise).
@@ -256,7 +264,8 @@ def fill(exported, images, target):
     for source, name in copies:
         shutil.copyfile(source, os.path.join(target, name))
     out = os.path.join(target, "listings.csv")
-    with open(out, "w", encoding="utf-8", newline="") as f:
+    # Same encoding as Partner Center's export (UTF-8 with a byte order mark).
+    with open(out, "w", encoding="utf-8-sig", newline="") as f:
         csv.writer(f).writerows(rows)
     print("written", out, "with", len(copies), "files beside it; language columns:",
           ", ".join(f"{l} -> {header[c]}" for l, c in columns.items()))
