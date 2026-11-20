@@ -17,6 +17,7 @@ pub mod ha;
 pub mod i18n;
 pub mod json;
 pub mod package;
+pub mod paths;
 pub mod settings;
 pub mod text;
 pub mod update;

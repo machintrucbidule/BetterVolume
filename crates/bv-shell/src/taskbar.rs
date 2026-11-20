@@ -44,9 +44,6 @@ use crate::install::HELPER_FILE;
 /// First argument of the executable when it runs as the loader child.
 pub const LOADER_ARGUMENT: &str = "--taskbar-helper";
 
-/// The loader's helper argument meaning "the payload of this executable" (the portable
-/// file carries the library inside).
-const EMBEDDED_HELPER: &str = "embedded";
 /// Prefix of its copies in the data folder (followed by a content hash).
 const COPY_PREFIX: &str = "bv_taskbar_helper-";
 /// Sub-folder of the data folder holding the copies.
@@ -132,6 +129,10 @@ pub(crate) struct VolumeIconState {
     loaded: RefCell<Option<Loaded>>,
     /// Attempts left after a failure.
     retries: Cell<u32>,
+    /// Loads started whose outcome has not arrived yet: each load reports once (the
+    /// helper, or the thread waiting for a child that failed). An outcome nobody asked
+    /// for (another program posting the message) is ignored.
+    pending: Cell<u32>,
     /// Taskbars in a row that ended (any way) shortly after a load.
     quick_ends: Cell<u32>,
 }
@@ -158,6 +159,13 @@ fn taskbar_pid() -> u32 {
     // SAFETY: a valid window handle and out-pointer.
     unsafe { GetWindowThreadProcessId(tray, Some(&mut pid)) };
     pid
+}
+
+/// Whether an outcome sent by process `from` (0: none, a failed load reported by this
+/// process) answers a load this process started: one is awaited (`pending`), and it comes
+/// from the taskbar (`taskbar` is asked only then).
+fn outcome_expected(pending: u32, from: u32, taskbar: impl FnOnce() -> u32) -> bool {
+    pending > 0 && (from == 0 || from == taskbar())
 }
 
 /// The incident rule: the taskbar ended shortly after the helper was loaded
@@ -259,6 +267,14 @@ impl Shell {
     ) -> Option<VolumeIconOutcome> {
         let state = &self.volume_icon;
         let outcome = outcome(wparam)?;
+        // Only an outcome of a load this process started counts, and only from the
+        // taskbar (or, for a failed load, from this process: no process id).
+        let from = u32::try_from(lparam.0).unwrap_or(0);
+        if !outcome_expected(state.pending.get(), from, taskbar_pid) {
+            crate::log::info("volume icon helper: an outcome nobody asked for was ignored");
+            return None;
+        }
+        state.pending.set(state.pending.get() - 1);
         match outcome {
             VolumeIconOutcome::Hidden => {
                 if !state.wanted.get() {
@@ -268,11 +284,10 @@ impl Shell {
                 }
                 // Normally the taskbar watched since the load started; the window of the
                 // incident rule then runs from now.
-                let pid = u32::try_from(lparam.0).unwrap_or(0);
                 let mut loaded = state.loaded.borrow_mut();
                 match loaded.as_mut() {
-                    Some(watched) if watched.pid == pid => watched.at = Instant::now(),
-                    _ => *loaded = watch_taskbar(pid),
+                    Some(watched) if watched.pid == from => watched.at = Instant::now(),
+                    _ => *loaded = watch_taskbar(from),
                 }
             }
             VolumeIconOutcome::Restored => {
@@ -332,21 +347,15 @@ impl Shell {
             }
         }
         let window = self.window.0 as isize;
+        // Every path below ends in exactly one outcome message.
+        self.volume_icon.pending.set(self.volume_icon.pending.get().saturating_add(1));
         let spawned = (|| {
             let exe = std::env::current_exe().ok()?;
-            // The library beside the executable, or inside it (portable file).
-            let helper = match crate::package::Package::own() {
-                Some(package) if package.kind == bv_core::package::Kind::Portable => {
-                    std::ffi::OsString::from(EMBEDDED_HELPER)
-                }
-                _ => exe.parent()?.join(HELPER_FILE).into_os_string(),
-            };
             std::process::Command::new(&exe)
                 .arg(LOADER_ARGUMENT)
                 .arg(if hide { "hide" } else { "restore" })
                 .arg(std::process::id().to_string())
                 .arg(window.to_string())
-                .arg(&helper)
                 .arg(folder.join(COPY_FOLDER))
                 .spawn()
                 .ok()
@@ -399,8 +408,10 @@ enum LoaderError {
 }
 
 /// The loader child: `<exe> --taskbar-helper <hide|restore> <owner pid> <owner window>
-/// <helper library> <copy folder>`. Copies the library, has the taskbar load the copy
-/// with the instruction, and returns the process exit code (0 = loaded).
+/// <copy folder>`. Copies the library, has the taskbar load the copy with the
+/// instruction, and returns the process exit code (0 = loaded). The library is always this
+/// executable's own ([`own_helper`]), never one named on the command line: the loader can
+/// not be used to have the taskbar load any other library.
 pub fn run_loader(args: &[String]) -> i32 {
     match load(args) {
         Ok(()) => 0,
@@ -412,7 +423,7 @@ pub fn run_loader(args: &[String]) -> i32 {
 }
 
 fn load(args: &[String]) -> Result<(), LoaderError> {
-    let [command, owner, window, helper, folder] = args else {
+    let [command, owner, window, folder] = args else {
         return Err(LoaderError::Arguments);
     };
     if !matches!(command.as_str(), "hide" | "restore")
@@ -421,13 +432,9 @@ fn load(args: &[String]) -> Result<(), LoaderError> {
     {
         return Err(LoaderError::Arguments);
     }
-    let bytes = if helper == EMBEDDED_HELPER {
-        crate::package::Package::own().and_then(|p| p.payload().ok())
-    } else {
-        std::fs::read(helper).ok()
-    };
-    let copy =
-        bytes.and_then(|bytes| copy_helper(&bytes, Path::new(folder))).ok_or(LoaderError::Copy)?;
+    let copy = own_helper()
+        .and_then(|bytes| copy_helper(&bytes, Path::new(folder)))
+        .ok_or(LoaderError::Copy)?;
 
     // SAFETY: a constant class name; a null window name matches by class only.
     let tray = unsafe { FindWindowW(w!("Shell_TrayWnd"), PCWSTR::null()) }
@@ -473,6 +480,15 @@ fn load(args: &[String]) -> Result<(), LoaderError> {
         }
     }
     Err(LoaderError::Load)
+}
+
+/// The bytes of this executable's own helper library: inside the file for the portable
+/// file, beside it otherwise (the installed program and development builds).
+fn own_helper() -> Option<Vec<u8>> {
+    match crate::package::Package::own() {
+        Some(package) if package.kind == bv_core::package::Kind::Portable => package.payload().ok(),
+        _ => std::fs::read(std::env::current_exe().ok()?.parent()?.join(HELPER_FILE)).ok(),
+    }
 }
 
 /// Copies the helper library (`bytes`) to `folder`, named after its content, unless that copy is
@@ -590,12 +606,31 @@ mod tests {
     }
 
     #[test]
+    fn only_awaited_outcomes_from_the_taskbar_count() {
+        // Nothing awaited: ignored, whoever sent it.
+        assert!(!outcome_expected(0, 0, || 7));
+        assert!(!outcome_expected(0, 7, || 7));
+        // Awaited: from the taskbar, or a failed load reported by this process.
+        assert!(outcome_expected(1, 7, || 7));
+        assert!(outcome_expected(2, 0, || 7));
+        // From any other process: ignored.
+        assert!(!outcome_expected(1, 8, || 7));
+        assert!(!outcome_expected(1, 8, || 0));
+    }
+
+    #[test]
     fn the_loader_refuses_bad_arguments() {
         let args = |list: &[&str]| list.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
         assert_eq!(load(&args(&[])), Err(LoaderError::Arguments));
-        assert_eq!(load(&args(&["show", "1", "2", "a", "b"])), Err(LoaderError::Arguments));
-        assert_eq!(load(&args(&["hide", "x", "2", "a", "b"])), Err(LoaderError::Arguments));
-        assert_eq!(load(&args(&["hide", "1", "2", "a"])), Err(LoaderError::Arguments));
+        assert_eq!(load(&args(&["show", "1", "2", "b"])), Err(LoaderError::Arguments));
+        assert_eq!(load(&args(&["hide", "x", "2", "b"])), Err(LoaderError::Arguments));
+        assert_eq!(load(&args(&["hide", "1", "2"])), Err(LoaderError::Arguments));
+        // A library named on the command line is refused: only the five-part form of
+        // older versions had one, and it is no longer understood.
+        assert_eq!(
+            load(&args(&["hide", "1", "2", r"C:\elsewhere\other.dll", "b"])),
+            Err(LoaderError::Arguments)
+        );
     }
 
     #[test]

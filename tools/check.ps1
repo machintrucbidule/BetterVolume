@@ -93,10 +93,12 @@ function Test-UnsafePolicy {
 # the user profile to "~"; Cargo has no stable setting for this yet, so it is passed
 # here, through the encoded flags variable (safe with spaces in paths). Any release build
 # meant to leave this machine must be made this way (the release workflow runs this script).
+# The variable replaces the flags of .cargo/config.toml, so the static C runtime is asked
+# again here (see Test-Imports).
 function Invoke-ReleaseBuild {
     $profileDir = [Environment]::GetFolderPath('UserProfile')
     $separator = [string][char]0x1F
-    $flags = @("--remap-path-prefix=$profileDir=~")
+    $flags = @("--remap-path-prefix=$profileDir=~", '-Ctarget-feature=+crt-static')
     if ($env:CARGO_HOME) { $flags += "--remap-path-prefix=$($env:CARGO_HOME)=cargo-home" }
     $previous = $env:CARGO_ENCODED_RUSTFLAGS
     $env:CARGO_ENCODED_RUSTFLAGS = $flags -join $separator
@@ -136,12 +138,79 @@ function Test-NoLocalPaths {
     $global:LASTEXITCODE = $bad
 }
 
+# A library imported by a shipped binary is looked for in the folder of the executable
+# first when Windows resolves it before the program starts, unless it is one of Windows'
+# known libraries or an API set. So a file named like it beside a setup or portable file
+# (the downloads folder) would run in the program. Every other library must be
+# delay-loaded (bv-app/build.rs), so it loads after main restricted the search to
+# System32, and the C runtime must be linked in (crt-static). This gate reads the import
+# tables of both shipped binaries.
+function Get-PeImports([string]$path) {
+    $b = [IO.File]::ReadAllBytes($path)
+    $pe = [BitConverter]::ToInt32($b, 0x3C)
+    $count = [BitConverter]::ToUInt16($b, $pe + 6)
+    $optSize = [BitConverter]::ToUInt16($b, $pe + 20)
+    $opt = $pe + 24
+    $dirs = $opt + 112
+    $sections = @()
+    for ($i = 0; $i -lt $count; $i++) {
+        $s = $opt + $optSize + 40 * $i
+        $sections += ,@([BitConverter]::ToUInt32($b, $s + 12), [BitConverter]::ToUInt32($b, $s + 8),
+            [BitConverter]::ToUInt32($b, $s + 20), [BitConverter]::ToUInt32($b, $s + 16))
+    }
+    $toOffset = {
+        param([uint32]$rva)
+        foreach ($s in $sections) {
+            if ($rva -ge $s[0] -and $rva -lt $s[0] + [Math]::Max($s[1], $s[3])) { return [int]($rva - $s[0] + $s[2]) }
+        }
+        return -1
+    }
+    $readName = {
+        param([int]$at)
+        $end = $at
+        while ($b[$end] -ne 0) { $end++ }
+        [Text.Encoding]::ASCII.GetString($b, $at, $end - $at)
+    }
+    $names = @()
+    $at = & $toOffset ([BitConverter]::ToUInt32($b, $dirs + 8))
+    while ($at -ge 0) {
+        $name = [BitConverter]::ToUInt32($b, $at + 12)
+        if ($name -eq 0) { break }
+        $names += & $readName (& $toOffset $name)
+        $at += 20
+    }
+    $names
+}
+
+function Test-Imports {
+    $entries = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\KnownDLLs').PSObject.Properties
+    $known = @($entries | Where-Object { $_.Name -notlike 'PS*' } | ForEach-Object { ([string]$_.Value).ToLowerInvariant() })
+    # Always mapped by Windows before any search.
+    $known += 'ntdll.dll', 'kernelbase.dll'
+    $bad = 0
+    foreach ($name in 'BetterVolume.exe', 'bv_taskbar_helper.dll') {
+        foreach ($import in Get-PeImports (Join-Path $root "target\release\$name")) {
+            $lower = $import.ToLowerInvariant()
+            if ($lower.StartsWith('api-ms-win-') -or $lower.StartsWith('ext-ms-win-')) { continue }
+            if ($known -contains $lower) { continue }
+            # The helper runs inside the taskbar (folder C:\Windows, not writable), where
+            # this library is always loaded already.
+            if ($name -eq 'bv_taskbar_helper.dll' -and $lower -eq 'bcryptprimitives.dll') { continue }
+            Write-Host "$name imports $import at start: delay-load it or link it in"
+            $bad = 1
+        }
+    }
+    if ($bad -eq 0) { Write-Host 'the shipped binaries import only known libraries and API sets at start' }
+    $global:LASTEXITCODE = $bad
+}
+
 Invoke-Gate 'Formatting' { cargo fmt --all -- --check }
 Invoke-Gate 'Lints (warnings are errors)' { cargo clippy --workspace --all-targets --locked -- -D warnings }
 Invoke-Gate 'Unsafe-code policy' { Test-UnsafePolicy }
 Invoke-Gate 'Tests' { cargo test --workspace --locked }
 Invoke-Gate 'Release build' { Invoke-ReleaseBuild }
 Invoke-Gate 'No local paths in the executable' { Test-NoLocalPaths }
+Invoke-Gate 'No library looked for beside the executable' { Test-Imports }
 Invoke-Gate 'Release files (setup and portable)' { & (Join-Path $PSScriptRoot 'package.ps1') }
 if ($SkipMeasure) {
     Write-Host ''

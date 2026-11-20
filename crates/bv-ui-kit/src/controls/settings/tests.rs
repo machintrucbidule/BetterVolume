@@ -1215,6 +1215,38 @@ fn a_long_notice_title_wraps_above_its_message() {
     assert_eq!(short.layout.notices[0].title.1, 1);
 }
 
+#[test]
+fn a_notice_button_goes_under_the_text_when_the_window_is_narrow() {
+    let page = content(
+        GENERAL,
+        vec![Block::Notice(Notice {
+            key: NOTICE,
+            severity: Severity::Critical,
+            title: "The certificate of the server changed".into(),
+            message: "It is not the certificate you trusted".into(),
+            action: Some("Trust this server".into()),
+        })],
+    );
+    let (min_width, min_height) = t::MIN_SIZE;
+    let narrow = SettingsView::new(page.clone(), Size::new(min_width, min_height), &Fixed, 1.0);
+    let notice = &narrow.layout.notices[0];
+    let (message, _) = notice.message;
+    let button = notice.action.unwrap();
+    assert!(button.y >= message.bottom() + 11.99, "under the text");
+    assert!((button.x - message.x).abs() < 0.01, "aligned with the text");
+    assert!(notice.rect.bottom() >= button.bottom(), "inside the notice");
+    let (_, pad_x, _) = t::NOTICE;
+    assert!(
+        (message.right() - (notice.rect.right() - pad_x)).abs() < 0.01,
+        "the text takes the whole width"
+    );
+    // Wide enough: the button stays at the right, beside the text.
+    let wide = SettingsView::new(page, Size::new(1200.0, min_height), &Fixed, 1.0);
+    let notice = &wide.layout.notices[0];
+    let button = notice.action.unwrap();
+    assert!(button.x >= notice.message.0.right(), "beside the text");
+}
+
 const PICTURES: SettingKey = SettingKey(20);
 const SIZE: SettingKey = SettingKey(21);
 const PICTURE: SettingKey = SettingKey(22);

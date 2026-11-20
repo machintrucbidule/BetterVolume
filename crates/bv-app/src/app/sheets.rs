@@ -293,6 +293,25 @@ fn render_language(sheets: &Sheets, language: Language, tooltips: &mut String) {
                 sheets.settings(language, n, "home-assistant-close", &content, SETTINGS, |v, m| {
                     v.request_close(m);
                 });
+                // The certificate notices, with their fingerprint (the longest notices).
+                for (name, problem) in [
+                    ("certificate-unknown", bv_mqtt::Problem::CertificateUnknown([0xA7; 32])),
+                    ("certificate-changed", bv_mqtt::Problem::CertificateChanged([0x3C; 32])),
+                ] {
+                    app.settings_window.ha.outcome =
+                        Some(super::ha_page::Outcome::Tested(Err(problem)));
+                    let content = app.settings_content();
+                    sheets.settings(language, n, name, &content, SETTINGS, |_, _| {});
+                    sheets.settings(
+                        language,
+                        n,
+                        &format!("{name}-narrow"),
+                        &content,
+                        NARROW,
+                        |_, _| {},
+                    );
+                }
+                app.settings_window.ha.outcome = None;
             }
             _ => {}
         }

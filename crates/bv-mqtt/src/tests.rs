@@ -297,3 +297,84 @@ fn a_dropped_client_lets_the_broker_publish_its_will() {
     assert!(broker
         .wait_for(WAIT, |b| b.retained("pc/availability").as_deref() == Some(&b"offline"[..])));
 }
+
+#[test]
+fn a_flood_waits_for_the_application_and_only_wanted_messages_pass() {
+    let broker = Broker::start(BrokerConfig::default()).unwrap();
+    let (_, notify) = notify_counter();
+    let mut wide = options(broker.port());
+    // Subscribed to everything, but only the application's topics are passed on.
+    wide.subscriptions.push("#".into());
+    wide.subscriptions.retain(|f| f == "#");
+    let client = Client::start(wide, notify);
+    let mut seen = Seen::default();
+    assert!(until(&client, &mut seen, connected));
+    // Too large for this application: dropped; the next one still arrives.
+    broker.publish("pc/big/set", &vec![b'x'; 100_000], false);
+    for i in 0..500 {
+        broker.publish("pc/flood/set", i.to_string().as_bytes(), false);
+    }
+    // Not read for a while: the client waits instead of piling messages up.
+    std::thread::sleep(Duration::from_millis(500));
+    let first = client.events();
+    assert!(!first.is_empty());
+    let mut payloads: Vec<String> = Vec::new();
+    let collect = |payloads: &mut Vec<String>, events: Vec<Event>| {
+        for event in events {
+            if let Event::Message { topic, payload, .. } = event {
+                assert_ne!(topic, "pc/big/set", "an oversized message was passed on");
+                payloads.push(String::from_utf8(payload).unwrap());
+            }
+        }
+    };
+    collect(&mut payloads, first);
+    let deadline = Instant::now() + WAIT;
+    while !payloads.last().is_some_and(|p| p == "499") && Instant::now() < deadline {
+        collect(&mut payloads, client.events());
+    }
+    assert_eq!(payloads.len(), 500, "every message arrives, in order");
+    assert_eq!(payloads[0], "0");
+    client.stop(Vec::new(), WAIT);
+}
+
+#[test]
+fn a_server_answering_too_slowly_is_given_up() {
+    use std::io::Write;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    // A server that sends one byte every half second and never a whole answer.
+    let server = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        for _ in 0..40 {
+            if socket.write_all(&[0x20]).is_err() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    });
+    let started = Instant::now();
+    let outcome = client::test(&options(port));
+    assert!(outcome.is_err());
+    assert!(started.elapsed() < Duration::from_secs(8), "{:?}", started.elapsed());
+    server.join().unwrap();
+}
+
+#[test]
+fn a_stop_is_quick_while_a_flood_fills_the_queue() {
+    let broker = Broker::start(BrokerConfig::default()).unwrap();
+    let (_, notify) = notify_counter();
+    let client = Client::start(options(broker.port()), notify);
+    let mut seen = Seen::default();
+    assert!(until(&client, &mut seen, connected));
+    // Far more than the queue holds, never read by the application.
+    for i in 0..(client::EVENT_QUEUE * 4) {
+        broker.publish("pc/flood/set", i.to_string().as_bytes(), false);
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    let started = Instant::now();
+    client.stop(vec![message("pc/availability", "bye", true)], Duration::from_secs(5));
+    assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
+    // A clean stop: the farewell was published, not the will.
+    assert!(broker.wait_for(WAIT, |b| b.connected() == 0));
+    assert_eq!(broker.retained("pc/availability").as_deref(), Some(&b"bye"[..]));
+}

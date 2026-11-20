@@ -30,6 +30,25 @@ fn main() {
     for library in ["crypt32.dll", "secur32.dll", "ws2_32.dll", "winhttp.dll"] {
         println!("cargo:rustc-link-arg-bins=/DELAYLOAD:{library}");
     }
+    // Every other library the executable imports that is not one Windows always takes from
+    // System32 (its "known" libraries) is delay-loaded too: it is then loaded after `main`
+    // restricted the library search to System32 (bv-shell/src/libraries.rs), so a file of
+    // the same name beside a setup or portable file is never used. Static imports are
+    // resolved before `main` from the folder of the executable first.
+    for library in [
+        "bcryptprimitives.dll",
+        "d2d1.dll",
+        "d3d11.dll",
+        "dcomp.dll",
+        "dwmapi.dll",
+        "dwrite.dll",
+        "dxgi.dll",
+        "propsys.dll",
+        "uiautomationcore.dll",
+        "version.dll",
+    ] {
+        println!("cargo:rustc-link-arg-bins=/DELAYLOAD:{library}");
+    }
     println!("cargo:rustc-link-arg-bins=delayimp.lib");
 
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("manifest dir"));

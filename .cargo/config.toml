@@ -1,0 +1,5 @@
+# The C runtime is linked into the executable and the taskbar helper library instead of
+# being loaded as VCRUNTIME140.dll: nothing to install, and no runtime library that Windows
+# would look for in the folder of the executable first (see bv-shell/src/libraries.rs).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

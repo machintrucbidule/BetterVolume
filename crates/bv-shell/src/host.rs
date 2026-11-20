@@ -73,6 +73,36 @@ pub(crate) fn exit_message() -> u32 {
     unsafe { RegisterWindowMessageW(w!("BetterVolume.Exit")) }
 }
 
+/// Whether this process runs with administrator rights (elevated). `false` when it
+/// cannot be told.
+fn elevated() -> bool {
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+    let mut token = HANDLE::default();
+    // SAFETY: the pseudo-handle of this process and a valid out-pointer.
+    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) }.is_err() {
+        return false;
+    }
+    let mut elevation = TOKEN_ELEVATION::default();
+    let mut size = 0u32;
+    // SAFETY: a token opened with the query right; the buffer is one TOKEN_ELEVATION.
+    let read = unsafe {
+        GetTokenInformation(
+            token,
+            TokenElevation,
+            Some((&raw mut elevation).cast()),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut size,
+        )
+    };
+    // SAFETY: our own handle, closed once.
+    let _ = unsafe { CloseHandle(token) };
+    read.is_ok() && elevation.TokenIsElevated != 0
+}
+
 /// What the shell needs to start.
 #[derive(Clone, Debug)]
 pub struct ShellConfig {
@@ -509,14 +539,18 @@ pub fn run<H: FnMut(&Shell, Event)>(
     shell.appearance.set(appearance::read());
     // An instance running with administrator rights must still hear a normal second
     // launch, the installer, the taskbar restarting, its own tray icon and the taskbar
-    // helper (Windows filters messages from less privileged processes otherwise).
-    for message in [
+    // helper (Windows filters messages from less privileged processes otherwise). An
+    // ordinary instance keeps Windows' filter: no less privileged process (a sandboxed
+    // one) can then make it quit, open its panel or fake a helper outcome.
+    let messages = [
         shell.activate,
         shell.exit_request,
         shell.taskbar_created,
         WM_TRAY,
         shell.volume_icon_status,
-    ] {
+    ];
+    for message in if elevated() { &messages[..] } else { &[] } {
+        let message = *message;
         if message != 0 {
             // SAFETY: our own window; no filter-status structure requested.
             let _ = unsafe { ChangeWindowMessageFilterEx(window, message, MSGFLT_ALLOW, None) };

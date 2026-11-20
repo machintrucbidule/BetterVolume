@@ -399,6 +399,11 @@ pub mod settings {
     pub const NOTICE_ICON: (f32, f32) = (16.0, 12.0);
     /// Gap between a notice's title and its message on one line.
     pub const NOTICE_TITLE_GAP: f32 = 12.0;
+    /// Least width left to a notice's text beside its button; narrower, the button goes
+    /// under the text (WinUI InfoBar wraps its action the same way).
+    pub const NOTICE_TEXT_MIN: f32 = 320.0;
+    /// Gap between a notice's text and its button under it.
+    pub const NOTICE_ACTION_GAP: f32 = 12.0;
     /// Width of a dialog (WinUI ContentDialog), its padding, and the gap above its buttons.
     pub const DIALOG: (f32, f32, f32) = (480.0, 24.0, 24.0);
     /// Corner radius of a dialog.

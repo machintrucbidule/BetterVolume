@@ -9,6 +9,7 @@ use windows::Win32::Foundation::CloseHandle;
 use windows::Win32::Storage::FileSystem::{
     GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW,
 };
+use windows::Win32::System::Environment::ExpandEnvironmentStringsW;
 use windows::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
 };
@@ -145,6 +146,19 @@ pub(crate) fn file_stem(path: &str) -> String {
     Path::new(path).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
+/// `text` with its `%Variable%` parts replaced by their values (unknown ones stay).
+fn expand_environment(text: &str) -> Option<String> {
+    let source = wide(text);
+    let mut buffer = vec![0u16; 1024];
+    // SAFETY: `source` is NUL-terminated; the buffer length is passed.
+    let written = unsafe { ExpandEnvironmentStringsW(PCWSTR(source.as_ptr()), Some(&mut buffer)) };
+    if written == 0 || written as usize > buffer.len() {
+        return None;
+    }
+    let length = buffer.iter().position(|&u| u == 0).unwrap_or(buffer.len());
+    Some(String::from_utf16_lossy(&buffer[..length]))
+}
+
 /// Resolves an indirect string such as `@%SystemRoot%\System32\AudioSrv.Dll,-202` (how
 /// some applications name their sessions). Other texts are returned unchanged.
 pub(crate) fn resolve_indirect(text: &str) -> Option<String> {
@@ -155,7 +169,18 @@ pub(crate) fn resolve_indirect(text: &str) -> Option<String> {
     if !text.starts_with('@') {
         return Some(text.to_owned());
     }
-    let source = wide(text);
+    // The file holding the text is never one on another computer (bv_core::paths): the
+    // application names it, and opening it would sign in there. It is checked once its
+    // `%Variable%` parts are expanded (a variable may name a network path), in both forms
+    // (`@file,-id` and `@{file-or-package?ms-resource://…}`), and Windows is given the
+    // expanded text; one still holding `%` after expansion is refused, as Windows would
+    // expand it again.
+    let expanded = expand_environment(&text[1..])?;
+    let target = expanded.strip_prefix('{').unwrap_or(&expanded);
+    if expanded.contains('%') || bv_core::paths::is_remote(target) {
+        return None;
+    }
+    let source = wide(&format!("@{expanded}"));
     let mut buffer = vec![0u16; 512];
     // SAFETY: `source` is NUL-terminated; Windows writes a NUL-terminated string that
     // fits in `buffer`.
@@ -240,6 +265,17 @@ mod tests {
         assert_eq!(resolve_indirect("  Player "), Some("Player".to_owned()));
         assert_eq!(resolve_indirect("   "), None);
         assert_eq!(resolve_indirect("@C:\\does\\not\\exist.dll,-1"), None);
+        // A file on another computer is never opened.
+        assert_eq!(resolve_indirect(r"@\\server\share\x.dll,-1"), None);
+        assert_eq!(resolve_indirect(r"@//server/share/x.dll,-1"), None);
+        assert_eq!(resolve_indirect(r"@{\\server\share\x.pri?ms-resource://a/b}"), None);
+        // Also when a variable names the network path (checked once expanded).
+        std::env::set_var("BV_TEST_NETWORK_SHARE", r"\\server\share");
+        assert_eq!(resolve_indirect(r"@%BV_TEST_NETWORK_SHARE%\x.dll,-1"), None);
+        assert_eq!(
+            expand_environment("%BV_TEST_NETWORK_SHARE%\\x").as_deref(),
+            Some(r"\\server\share\x")
+        );
         let system_sounds = resolve_indirect("@%SystemRoot%\\System32\\AudioSrv.Dll,-202");
         if let Some(name) = system_sounds {
             assert!(!name.starts_with('@'));

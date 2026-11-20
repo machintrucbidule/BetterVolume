@@ -370,8 +370,9 @@ real text measures).
   16 = filled circle (U+F136) in `notice_icon` with the severity glyph (U+F13F, U+F13E,
   U+F13C, U+F13D) in `notice_glyph` on it, then 12; title in body strong and message in
   body on one line when they fit, the message under the title otherwise (a long title
-  wraps, up to 3 lines); an optional
-  standard button at the right.
+  wraps, up to 3 lines; the message up to 12); an optional
+  standard button at the right, or under the text (aligned with it, 12 below) when less
+  than 320 would be left to the text beside it.
 - Close question (WinUI ContentDialog): veil `Theme::window.smoke` over the window; dialog
   480 wide (less on a narrow window), centred, radius 8, solid fill and popup outline,
   padding 24; title in the subtitle style (20/28 semibold), text in body 12 below; a

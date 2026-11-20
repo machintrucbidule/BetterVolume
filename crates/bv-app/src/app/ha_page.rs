@@ -144,6 +144,15 @@ fn certificate_of(problem: &Problem) -> Option<[u8; 32]> {
     }
 }
 
+/// A certificate fingerprint as Windows shows a thumbprint: hexadecimal pairs in capitals,
+/// separated by spaces (so the text can wrap).
+fn fingerprint_text(fingerprint: &[u8; 32]) -> String {
+    let hex = bv_core::encoding::hex(fingerprint).to_ascii_uppercase();
+    let pairs: Vec<&str> =
+        hex.as_bytes().chunks(2).filter_map(|p| std::str::from_utf8(p).ok()).collect();
+    pairs.join(" ")
+}
+
 impl<E: AudioEngine> App<E> {
     /// The draft form (the saved settings until something is typed).
     fn ha_form(&self) -> HaForm {
@@ -221,12 +230,23 @@ impl<E: AudioEngine> App<E> {
         };
         let problem = |p: &Problem| {
             let (title, detail) = problem_texts(p);
-            let severity = if certificate_of(p).is_some() || *p == Problem::Lost {
-                Severity::Caution
-            } else {
-                Severity::Critical
+            // A certificate that changed may be someone in the way: told as an error.
+            let severity = match p {
+                Problem::CertificateUnknown(_) | Problem::Lost => Severity::Caution,
+                _ => Severity::Critical,
             };
-            notice(severity, title, detail, certificate_of(p).is_some())
+            let mut shown = notice(severity, title, detail, certificate_of(p).is_some());
+            // The certificate offered is shown by its fingerprint, to be compared with the
+            // server's own before trusting it.
+            if let Some(certificate) = certificate_of(p) {
+                let fingerprint = fingerprint_text(&certificate);
+                shown.message.push('\n');
+                shown.message.push_str(&self.language.format(
+                    Msg::SettingsHaCertFingerprint,
+                    &[("fingerprint", fingerprint.as_str())],
+                ));
+            }
+            shown
         };
         match &self.settings_window.ha.outcome {
             Some(Outcome::Invalid(title, detail)) => {

@@ -17,15 +17,34 @@
 use std::io::{ErrorKind, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use crate::codec::{Connect, Packet, Publish, Will};
+use crate::codec::{self, Connect, Packet, Publish, Will};
 
 /// How long a connection attempt (TCP, encryption, answer of the broker) may take.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long the exchange on a connected socket (encryption, answer of the broker) may
+/// take, however slowly the server answers: the socket is then closed (a server sending
+/// one byte at a time cannot hold it). Name resolution and the TCP connection come before
+/// it, with their own limits; the look at an unknown certificate uses a second socket with
+/// a deadline of its own. Short in tests, so the test of a slow server stays quick.
+#[cfg(not(test))]
+const CONNECT_DEADLINE: Duration = Duration::from_secs(30);
+#[cfg(test)]
+const CONNECT_DEADLINE: Duration = Duration::from_secs(3);
+/// Events waiting for the application: past this, the reader waits for the application
+/// to catch up (and stops reading the socket meanwhile), so a server sending without
+/// pause cannot fill the memory.
+pub(crate) const EVENT_QUEUE: usize = 64;
+/// Largest message passed on to the application; larger ones are dropped (this
+/// application's messages are a few bytes).
+const MESSAGE_LIMIT: usize = 64 * 1024;
+/// Bytes read from the socket before the packets read are handed over, so one pass
+/// never holds more than this beyond a packet being received.
+const READ_BATCH: usize = 256 * 1024;
 /// How long one write may block (a dead network with a full send buffer).
 const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 /// First delay before trying again (FR-115); doubled at each failure.
@@ -165,7 +184,7 @@ impl Client {
     /// Starts connecting in the background.
     pub fn start(options: Options, notify: Notify) -> Client {
         let (commands, inbox) = mpsc::channel();
-        let (outbox, events) = mpsc::channel();
+        let (outbox, events) = mpsc::sync_channel(EVENT_QUEUE);
         let loopback = commands.clone();
         let abandoned = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&abandoned);
@@ -193,6 +212,10 @@ impl Client {
     /// Publishes `farewell` (if connected), disconnects cleanly and stops, waiting at most
     /// `timeout` (before sleep, the system gives little time).
     pub fn stop(mut self, farewell: Vec<Message>, timeout: Duration) {
+        // Nothing reads the events any more: let them go first, so a reader or a worker
+        // waiting for room in a full queue goes on at once instead of holding the stop.
+        let (_, gone) = mpsc::sync_channel(0);
+        drop(std::mem::replace(&mut self.events, gone));
         let (done, wait) = mpsc::channel();
         let stopped = self.commands.send(Command::Stop(farewell, done)).is_ok()
             && wait.recv_timeout(timeout).is_ok();
@@ -279,7 +302,7 @@ struct Worker {
     options: Options,
     inbox: Receiver<Command>,
     loopback: Sender<Command>,
-    outbox: Sender<Event>,
+    outbox: SyncSender<Event>,
     notify: Notify,
     generation: u64,
     abandoned: Arc<AtomicBool>,
@@ -287,7 +310,7 @@ struct Worker {
 
 impl Worker {
     fn emit(&self, event: Event) {
-        if self.outbox.send(event).is_ok() {
+        if deliver(&self.outbox, &self.notify, event) {
             (self.notify)();
         }
     }
@@ -347,10 +370,11 @@ impl Worker {
             let outbox = self.outbox.clone();
             let notify = Arc::clone(&self.notify);
             let silence = self.options.keep_alive * 3 / 2;
+            let filters = self.options.subscriptions.clone();
             std::thread::Builder::new()
                 .name("bv-mqtt-reader".into())
                 .spawn(move || {
-                    read_loop(&stream, &reader_raw, silence, &commands, &outbox, &notify);
+                    read_loop(&stream, &reader_raw, silence, &filters, &commands, &outbox, &notify);
                     let _ = commands.send(Command::ReaderEnded(generation));
                 })
                 .ok()
@@ -431,13 +455,29 @@ impl Worker {
     }
 }
 
+/// Hands `event` to the application. When its queue is full, the application is woken
+/// and this thread waits until it has taken some. Returns whether the application still
+/// listens.
+fn deliver(outbox: &SyncSender<Event>, notify: &Notify, event: Event) -> bool {
+    match outbox.try_send(event) {
+        Ok(()) => true,
+        Err(TrySendError::Full(event)) => {
+            notify();
+            outbox.send(event).is_ok()
+        }
+        Err(TrySendError::Disconnected(_)) => false,
+    }
+}
+
 /// Reads packets until the connection ends (or stays silent longer than `silence`).
+/// Messages on topics outside `filters` are not passed on.
 fn read_loop(
     stream: &Mutex<Stream>,
     raw: &TcpStream,
     silence: Duration,
+    filters: &[String],
     commands: &Sender<Command>,
-    outbox: &Sender<Event>,
+    outbox: &SyncSender<Event>,
     notify: &Notify,
 ) {
     if raw.set_read_timeout(Some(silence)).is_err() {
@@ -445,25 +485,39 @@ fn read_loop(
     }
     let mut input: Vec<u8> = Vec::new();
     let mut buf = vec![0_u8; 16 * 1024];
+    // More bytes may be readable (a pass stopped at `READ_BATCH`): read again at once, as
+    // decrypted bytes kept by the encryption layer would not show to `peek`.
+    let mut more = false;
     loop {
         // Wait for bytes without holding the lock.
-        match raw.peek(&mut buf[..1]) {
-            Ok(0) | Err(_) => return,
-            Ok(_) => {}
+        if !more {
+            match raw.peek(&mut buf[..1]) {
+                Ok(0) | Err(_) => return,
+                Ok(_) => {}
+            }
         }
+        more = false;
         {
             let mut guard = lock(stream);
             if raw.set_nonblocking(true).is_err() {
                 return;
             }
             let mut closed = false;
+            let mut read = 0;
             loop {
+                if read >= READ_BATCH {
+                    more = true;
+                    break;
+                }
                 match guard.read(&mut buf) {
                     Ok(0) => {
                         closed = true;
                         break;
                     }
-                    Ok(n) => input.extend_from_slice(&buf[..n]),
+                    Ok(n) => {
+                        input.extend_from_slice(&buf[..n]);
+                        read += n;
+                    }
                     Err(e) if e.kind() == ErrorKind::WouldBlock => break,
                     Err(e) if e.kind() == ErrorKind::Interrupted => {}
                     Err(_) => {
@@ -477,27 +531,35 @@ fn read_loop(
             }
             drop(guard);
             let mut delivered = false;
+            // Packets are taken from the front; the bytes used are removed once at the end
+            // (removing them one packet at a time would move the rest each time).
+            let mut start = 0;
             loop {
-                match Packet::decode(&input) {
+                match Packet::decode(&input[start..]) {
                     Ok(Some((packet, used))) => {
-                        input.drain(..used);
+                        start += used;
                         if let Packet::Publish(p) = packet {
                             if p.qos == 1 {
                                 let _ = commands.send(Command::Ack(p.id));
                             }
-                            delivered |= outbox
-                                .send(Event::Message {
+                            // Only what was asked for, of a size this application uses.
+                            if p.payload.len() <= MESSAGE_LIMIT
+                                && filters.iter().any(|f| codec::matches(f, &p.topic))
+                            {
+                                let message = Event::Message {
                                     topic: p.topic,
                                     payload: p.payload,
                                     retained: p.retain,
-                                })
-                                .is_ok();
+                                };
+                                delivered |= deliver(outbox, notify, message);
+                            }
                         }
                     }
                     Ok(None) => break,
                     Err(_) => return,
                 }
             }
+            input.drain(..start);
             if delivered {
                 notify();
             }
@@ -512,6 +574,8 @@ fn read_loop(
 fn connect(options: &Options, abandoned: &AtomicBool) -> Result<(Stream, TcpStream), Problem> {
     let tcp = tcp(options)?;
     let raw = tcp.try_clone().map_err(|_| Problem::Unreachable)?;
+    // From here to the broker's answer (end of this function): at most `CONNECT_DEADLINE`.
+    let _deadline = Deadline::start(&raw);
     let mut stream = match &options.tls {
         None => Stream::Plain(tcp),
         Some(tls) => Stream::Tls(Box::new(encrypt(options, tls, tcp)?)),
@@ -535,6 +599,8 @@ fn connect(options: &Options, abandoned: &AtomicBool) -> Result<(Stream, TcpStre
     let answer = loop {
         match Packet::decode(&input) {
             Ok(Some((packet, _))) => break packet,
+            // The answer (CONNACK) is four bytes: anything longer is not one.
+            Ok(None) if input.len() > CONNACK_LIMIT => return Err(Problem::Protocol),
             Ok(None) => {}
             Err(_) => return Err(Problem::Protocol),
         }
@@ -559,6 +625,33 @@ fn connect(options: &Options, abandoned: &AtomicBool) -> Result<(Stream, TcpStre
     // From here on the reader decides when the connection is dead.
     raw.set_read_timeout(None).map_err(|_| Problem::Lost)?;
     Ok((stream, raw))
+}
+
+/// Bytes read while waiting for the broker's answer before it counts as not one.
+const CONNACK_LIMIT: usize = 64;
+
+/// Closes a socket once `CONNECT_DEADLINE` has passed, unless dropped before: a
+/// connection attempt then ends however slowly the server answers (each read has its own
+/// time limit, a whole attempt had none). One short-lived thread per attempt.
+struct Deadline {
+    _cancel: Sender<()>,
+}
+
+impl Deadline {
+    fn start(socket: &TcpStream) -> Option<Deadline> {
+        let socket = socket.try_clone().ok()?;
+        let (cancel, cancelled) = mpsc::channel::<()>();
+        std::thread::Builder::new()
+            .name("bv-mqtt-deadline".into())
+            .spawn(move || {
+                // Dropping `cancel` ends the wait at once (disconnected).
+                if cancelled.recv_timeout(CONNECT_DEADLINE) == Err(RecvTimeoutError::Timeout) {
+                    let _ = socket.shutdown(Shutdown::Both);
+                }
+            })
+            .ok()?;
+        Some(Deadline { _cancel: cancel })
+    }
 }
 
 fn tcp(options: &Options) -> Result<TcpStream, Problem> {
@@ -611,8 +704,10 @@ fn encrypt(
             // Was it the certificate? Look at it over a second connection that accepts
             // any certificate (nothing is sent over it).
             Err(_) => {
+                let tcp = self::tcp(options)?;
+                let _deadline = Deadline::start(&tcp);
                 let probe = connector(true)?
-                    .connect(&options.host, self::tcp(options)?)
+                    .connect(&options.host, tcp)
                     .map_err(|_| Problem::Encryption)?;
                 Err(fingerprint(&probe).map_or(Problem::Encryption, Problem::CertificateUnknown))
             }

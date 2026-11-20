@@ -25,6 +25,7 @@ pub mod http;
 mod input;
 mod install;
 mod instance;
+mod libraries;
 mod locale;
 pub mod log;
 mod media;
@@ -55,6 +56,7 @@ pub use install::{
     HELPER_FILE, PROGRAM_FILE, UNINSTALL_ARGUMENT,
 };
 pub use instance::SingleInstance;
+pub use libraries::restrict_library_search;
 pub use locale::os_display_languages;
 pub use media::MediaKey;
 pub use menu::MenuLine;

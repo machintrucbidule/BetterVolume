@@ -271,7 +271,17 @@ fn the_link_problem_shows_and_a_changed_certificate_can_be_trusted() {
         content.card(HaKey::Enabled.key()).unwrap().description.as_deref(),
         Some("Not connected: trying again automatically")
     );
-    assert_eq!(notice(&content).unwrap().title, "The certificate of the server changed");
+    let shown = notice(&content).unwrap();
+    assert_eq!(shown.title, "The certificate of the server changed");
+    // Told as an error, with the fingerprint of the certificate offered.
+    assert_eq!(shown.severity, Severity::Critical);
+    assert!(
+        shown
+            .message
+            .ends_with(&format!("\nCertificate fingerprint (SHA-256): {}", ["01"; 32].join(" "))),
+        "{}",
+        shown.message
+    );
     act(&mut app, SettingsAction::Invoke(HaKey::Notice.key()));
     assert_eq!(app.settings().home_assistant.trusted_certificate, Some("01".repeat(32)));
 }
@@ -321,6 +331,10 @@ fn the_link_certificate_is_trusted_for_the_saved_server_only() {
         retry_in: std::time::Duration::from_secs(1),
     });
     app.on_ha_events();
+    let content = app.settings_content();
+    let shown = notice(&content).unwrap();
+    assert_eq!(shown.severity, Severity::Caution, "an unknown certificate is a caution");
+    assert!(shown.message.contains(&["02"; 32].join(" ")), "{}", shown.message);
     act(&mut app, SettingsAction::Invoke(HaKey::Notice.key()));
     let ha = &app.settings().home_assistant;
     assert_eq!(ha.host, "broker.lan", "the typed host is still a draft");

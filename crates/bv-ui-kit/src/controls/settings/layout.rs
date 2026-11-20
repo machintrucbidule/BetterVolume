@@ -369,7 +369,11 @@ pub(crate) fn layout(
                 let (icon, icon_gap) = t::NOTICE_ICON;
                 let action = notice.action.as_ref().map(|a| button_size(a, measure, text_scale));
                 let text_x = x + notice_pad_x + icon + icon_gap;
-                let right = x + width - notice_pad_x - action.map_or(0.0, |a| a.width + 12.0);
+                let full_right = x + width - notice_pad_x;
+                let beside_right = full_right - action.map_or(0.0, |a| a.width + 12.0);
+                // Too little room beside the button: the button goes under the text.
+                let below = action.is_some() && beside_right - text_x < t::NOTICE_TEXT_MIN;
+                let right = if below { full_right } else { beside_right };
                 let room = (right - text_x).max(1.0);
                 let title_width = measure.width(&notice.title, BODY_STRONG).ceil();
                 let message_width = measure.width(&notice.message, BODY).ceil();
@@ -393,7 +397,7 @@ pub(crate) fn layout(
                     let lines = if notice.message.is_empty() {
                         0
                     } else {
-                        measure.lines(&notice.message, BODY, room).clamp(1, 6)
+                        measure.lines(&notice.message, BODY, room).clamp(1, 12)
                     };
                     let message_height = lines as f32 * line(BODY);
                     (
@@ -403,10 +407,14 @@ pub(crate) fn layout(
                     )
                 };
                 let action_height = action.map_or(0.0, |a| a.height);
-                let height =
-                    (text_height.max(action_height) + 2.0 * notice_pad_y).max(min_height).round();
+                let content_height = if below {
+                    text_height + t::NOTICE_ACTION_GAP + action_height
+                } else {
+                    text_height.max(action_height)
+                };
+                let height = (content_height + 2.0 * notice_pad_y).max(min_height).round();
                 let rect = Rect::new(x, y, width, height);
-                let text_top = (y + (height - text_height) / 2.0).round();
+                let text_top = (y + (height - content_height) / 2.0).round();
                 let shift = |r: Rect| Rect { y: r.y + text_top, ..r };
                 laid.notices.push(NoticeLayout {
                     key: notice.key,
@@ -420,12 +428,21 @@ pub(crate) fn layout(
                     title: (shift(title.0), title.1),
                     message: (shift(message.0), message.1),
                     action: action.map(|a| {
-                        Rect::new(
-                            x + width - notice_pad_x - a.width,
-                            (y + (height - a.height) / 2.0).round(),
-                            a.width,
-                            a.height,
-                        )
+                        if below {
+                            Rect::new(
+                                text_x,
+                                text_top + text_height + t::NOTICE_ACTION_GAP,
+                                a.width,
+                                a.height,
+                            )
+                        } else {
+                            Rect::new(
+                                x + width - notice_pad_x - a.width,
+                                (y + (height - a.height) / 2.0).round(),
+                                a.width,
+                                a.height,
+                            )
+                        }
                     }),
                 });
                 y += height + t::CARD_GAP;

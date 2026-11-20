@@ -269,6 +269,11 @@ fn helper_folder() -> PathBuf {
 }
 
 fn main() -> ExitCode {
+    // Before any other library is loaded: Windows libraries come from System32 only, never
+    // from the folder of this file (a setup file run from the downloads folder).
+    if !bv_shell::restrict_library_search() {
+        return ExitCode::FAILURE;
+    }
     // The loader child of the taskbar helper: load it, report, exit.
     let args: Vec<String> = std::env::args().collect();
     let package = bv_shell::Package::own();

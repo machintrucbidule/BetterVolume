@@ -258,7 +258,9 @@ and notifications" (FR-082, FR-077).
   unsaved changes asks first.
 - **FR-091** "Test connection" gives a plain-language result (success, unreachable, refused
   credentials, encryption problem). Live connection status is always displayed. A
-  certificate Windows does not trust can be trusted explicitly for this server.
+  certificate Windows does not trust can be trusted explicitly for this server; the notice
+  shows the certificate's SHA-256 fingerprint, and a trusted certificate that changed is
+  shown as an error warning that someone may be intercepting the connection.
 - **FR-092** The password is stored encrypted for the current Windows user and never shown
   back, logged, or exported.
 

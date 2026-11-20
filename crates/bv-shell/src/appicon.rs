@@ -85,6 +85,11 @@ fn load(source: &str, pixels: u32, graphics: &Graphics) -> Option<Pixels> {
         return None;
     }
     let path = expand(path);
+    // Never a file on another computer (bv_core::paths): opening it would sign in there.
+    let text = String::from_utf16_lossy(&path[..path.len().saturating_sub(1)]);
+    if bv_core::paths::is_remote(&text) {
+        return None;
+    }
     let mut icon = HICON::default();
     // SAFETY: `path` is NUL-terminated; one large icon requested at the exact size
     // (low word of the size argument), no small icon.
@@ -129,5 +134,8 @@ mod tests {
         // Cached: the same pixels again.
         assert!(Rc::ptr_eq(&icon, &cache.get(&notepad, 30, &graphics).unwrap()));
         assert!(cache.get(r"C:\nothing\here.exe", 30, &graphics).is_none());
+        // A file on another computer is never opened.
+        assert!(cache.get(r"\\localhost\C$\Windows\System32\notepad.exe", 30, &graphics).is_none());
+        assert!(cache.get(r"@\\server\share\icon.ico,0", 30, &graphics).is_none());
     }
 }

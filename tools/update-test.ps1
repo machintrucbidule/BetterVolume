@@ -57,7 +57,7 @@ Get-ChildItem $served -Filter '*.exe' | Remove-Item
 # --- The newer version ------------------------------------------------------------------
 Write-Host "building BetterVolume $Version (current: $current)"
 $profileDir = [Environment]::GetFolderPath('UserProfile')
-$flags = @("--remap-path-prefix=$profileDir=~")
+$flags = @("--remap-path-prefix=$profileDir=~", '-Ctarget-feature=+crt-static')
 if ($env:CARGO_HOME) { $flags += "--remap-path-prefix=$($env:CARGO_HOME)=cargo-home" }
 $previousFlags = $env:CARGO_ENCODED_RUSTFLAGS
 $previousVersion = $env:BETTERVOLUME_VERSION

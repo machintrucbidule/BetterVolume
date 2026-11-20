@@ -146,6 +146,14 @@ child, our icon's taskbar preference), `bv-taskbar-helper` (section 7), `bv-mqtt
 encryption, test broker behind the `test-broker` feature) and `bv-app` (application state,
 settings file store, Home Assistant link and page) hold real code.
 
+Limits of the MQTT client towards a server it does not control (`bv-mqtt/src/client.rs`):
+received messages wait for the application in a queue of 64, past which the reader stops
+reading the socket until the application catches up; only messages on the subscribed
+topics and of at most 64 KiB are passed on; the socket is read in passes of at most
+256 KiB; the broker's first answer must be a CONNACK within 64 bytes; once connected, the
+exchange up to that answer (encryption included) is cut after 30 s however slowly the
+server sends. A stop lets the queue go first, so it never waits for the application.
+
 Settings: `bv-app/src/store.rs` reads the file at start (defaults if it
 is missing or unusable, never blocking) and writes it atomically after every event that
 changed the settings (`App::take_dirty`). The settings window follows the flyout's
@@ -312,8 +320,10 @@ Decision: a small in-taskbar helper shipped with the app.
 
 - **Loading.** The application never loads the XAML library itself (footprint): it
   starts itself as a short-lived child (`BetterVolume.exe --taskbar-helper <hide|restore>
-  <pid> <window> <helper> <folder>`, `bv_shell::run_loader`). The child copies
-  `bv_taskbar_helper.dll` (beside the executable) to `<data folder>\taskbar-helper\`
+  <pid> <window> <folder>`, `bv_shell::run_loader`). The child copies its own
+  `bv_taskbar_helper.dll` (beside the executable, or the portable file's payload; never a
+  library named on the command line, so the loader cannot be used to load anything else
+  into the taskbar) to `<data folder>\taskbar-helper\`
   under a name made of its content hash (the taskbar keeps a loaded library open until it
   restarts; the copy keeps the installed file replaceable and lets a new version load
   beside an old one), removes older copies not in use, finds the taskbar process
@@ -355,7 +365,11 @@ Decision: a small in-taskbar helper shipped with the app.
   "restore" (crash, Task Manager, uninstall).
 - **Outcomes** come back to the message window as the registered message
   "BetterVolume.TaskbarHelper" (hidden, restored, not found, failed; `LPARAM` = taskbar
-  process id), or from the thread that waited for a loader child that failed; a failure is
+  process id), or from the thread that waited for a loader child that failed. Only an
+  outcome of a load this process started counts (one per load), and only one naming the
+  taskbar process or none; any other is ignored. This keeps stray messages from starting
+  loads; it is not an authentication (any program of the same user can post the
+  message, which Windows' message filter keeps from less privileged ones). A failure is
   retried twice, 3 s apart. "Not found" or "failed" while wanted = the switch stays on and
   says the icon cannot be hidden on this Windows.
 - **Taskbar re-created** (`TaskbarCreated`): loaded again 3 s later. The taskbar is
@@ -419,7 +433,19 @@ ordering in `bv_core::package` (one definition, unit-tested); `bv_shell::Package
 this executable as such a file; the bv-core example `package` writes and reads back the
 two files, run by `tools/package.ps1` (gate of `tools/check.ps1`, output in
 `target/package/`). The portable file's loader child reads the helper from its own
-payload (`embedded` helper argument) and writes its copy to the profile folder.
+payload and writes its copy to the profile folder.
+
+Library search (every role): `main` first restricts the library search of the process to
+System32 (`bv_shell::restrict_library_search`, `SetDefaultDllDirectories`), so a file named
+like a Windows library beside a setup or portable file (the downloads folder) is never
+loaded. Imports resolved before `main` would still be looked for beside the executable
+first, so every import that is not one of Windows' known libraries is delay-loaded
+(`bv-app/build.rs`) and the C runtime is linked statically (`.cargo/config.toml`); what
+stays imported at start is only known libraries and API sets.
+
+Window messages: Windows keeps less privileged processes (sandboxed ones) from posting to
+the message window; the activation, exit, `TaskbarCreated`, tray and helper messages are
+let through that filter only when BetterVolume itself runs elevated.
 
 Installation (`bv-shell/src/install.rs`): files written beside then renamed into
 place; Start-menu entry through `IShellLinkW`; per-user installed-apps entry; autostart
