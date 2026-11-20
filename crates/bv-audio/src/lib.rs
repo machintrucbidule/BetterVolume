@@ -191,7 +191,7 @@ pub trait AudioEngine {
     /// [`bv_core::apps::rows`].
     fn sessions(&self) -> &[Stream];
 
-    /// The applications heard playing on the current output for the first time since the
+    /// The applications heard playing on an output for the first time since the
     /// last call (the engine follows what plays at all times, FR-096), with what could be
     /// read of them; a process whose executable cannot be read is left out.
     fn take_heard_apps(&mut self) -> Vec<HeardApp>;

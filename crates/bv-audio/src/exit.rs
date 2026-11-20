@@ -3,8 +3,10 @@
 //! Windows does not always expire the sessions of a process that exits (in particular one
 //! that is killed), so its row would stay listed. Each followed session therefore also
 //! waits on its process through the Windows thread pool: no thread of our own, no
-//! polling. When the process ends, a "sessions changed" signal makes the UI thread
-//! enumerate again, and sessions of ended processes are left out.
+//! polling. When the process ends, a signal makes the UI thread enumerate again, and
+//! sessions of ended processes are left out. The engine also watches the end of the
+//! processes it remembers as heard playing (`activity::Heard`), so an application that
+//! follows the current output without a session there loses its row when it closes.
 
 use std::ffi::c_void;
 
@@ -21,7 +23,7 @@ use crate::signals::{Signal, Sink};
 /// What the thread-pool callback needs.
 struct Context {
     sink: Sink,
-    generation: u64,
+    signal: Signal,
 }
 
 /// A wait on one process, cancelled when dropped.
@@ -43,8 +45,8 @@ pub(crate) enum Watch {
 }
 
 impl ExitWatch {
-    /// Starts waiting for process `pid` to end.
-    pub(crate) fn start(pid: u32, sink: Sink, generation: u64) -> Watch {
+    /// Starts waiting for process `pid` to end; `signal` is sent when it does.
+    pub(crate) fn start(pid: u32, sink: Sink, signal: Signal) -> Watch {
         if pid == 0 {
             return Watch::Unwatchable;
         }
@@ -67,7 +69,7 @@ impl ExitWatch {
             let _ = unsafe { CloseHandle(process) };
             return Watch::Gone;
         }
-        let context = Box::into_raw(Box::new(Context { sink, generation }));
+        let context = Box::into_raw(Box::new(Context { sink, signal }));
         let mut wait = HANDLE::default();
         // SAFETY: `process` is a valid handle; `context` stays valid until `drop` has
         // cancelled the wait and waited for any running callback (UnregisterWaitEx with
@@ -120,7 +122,7 @@ unsafe extern "system" fn on_exit(context: *mut c_void, _timed_out: bool) {
     // SAFETY: `context` is the `Context` registered by `ExitWatch::start`, alive until
     // `drop` has made sure no callback runs; only shared access (`Sink` is `Sync`).
     if let Some(context) = unsafe { (context as *const Context).as_ref() } {
-        context.sink.send(Signal::Sessions { generation: context.generation });
+        context.sink.send(context.signal);
     }
 }
 
@@ -150,7 +152,9 @@ mod tests {
                 let _ = woken.send(());
             }),
         );
-        let Watch::Running(watch) = ExitWatch::start(child.id(), sink, 9) else {
+        let Watch::Running(watch) =
+            ExitWatch::start(child.id(), sink, Signal::Sessions { generation: 9 })
+        else {
             panic!("the child must be watchable");
         };
         assert!(!watch.has_exited());
@@ -168,9 +172,9 @@ mod tests {
     fn unknown_processes_are_not_watched() {
         let (sender, receiver) = mpsc::channel();
         let sink = Sink::new(sender, Arc::new(|| {}));
-        assert!(matches!(ExitWatch::start(0, sink.clone(), 1), Watch::Unwatchable));
+        assert!(matches!(ExitWatch::start(0, sink.clone(), Signal::Ended), Watch::Unwatchable));
         // Process identifiers are multiples of 4: this one never exists.
-        assert!(matches!(ExitWatch::start(u32::MAX - 2, sink.clone(), 1), Watch::Gone));
+        assert!(matches!(ExitWatch::start(u32::MAX - 2, sink.clone(), Signal::Ended), Watch::Gone));
         // An ended process is "gone" too, whether something still holds a handle on it
         // (here: `child`) or not.
         let windows = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
@@ -181,10 +185,10 @@ mod tests {
         let pid = child.id();
         let _ = child.wait();
         for _ in 0..50 {
-            assert!(matches!(ExitWatch::start(pid, sink.clone(), 1), Watch::Gone));
+            assert!(matches!(ExitWatch::start(pid, sink.clone(), Signal::Ended), Watch::Gone));
         }
         drop(child);
-        assert!(matches!(ExitWatch::start(pid, sink, 1), Watch::Gone));
+        assert!(matches!(ExitWatch::start(pid, sink, Signal::Ended), Watch::Gone));
         // No signal for a process that had already ended: that would make the session
         // list re-read itself for nothing, again and again.
         std::thread::sleep(Duration::from_millis(200));
@@ -195,7 +199,8 @@ mod tests {
     fn a_watch_can_be_dropped_while_the_process_runs() {
         let (sender, receiver) = mpsc::channel();
         let sink = Sink::new(sender, Arc::new(|| {}));
-        let Watch::Running(watch) = ExitWatch::start(std::process::id(), sink, 2) else {
+        let Watch::Running(watch) = ExitWatch::start(std::process::id(), sink, Signal::Ended)
+        else {
             panic!("we can watch ourselves");
         };
         assert!(!watch.has_exited());

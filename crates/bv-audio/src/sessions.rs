@@ -217,7 +217,11 @@ impl SessionWatch {
         let stream = describe(&control, &volume, &self.names);
         let exit = match stream.app {
             AppKey::System => None,
-            _ => match ExitWatch::start(stream.process, self.sink.clone(), self.generation) {
+            _ => match ExitWatch::start(
+                stream.process,
+                self.sink.clone(),
+                Signal::Sessions { generation: self.generation },
+            ) {
                 Watch::Running(watch) => Some(watch),
                 // A session left behind by a process that already ended: never listed,
                 // however often Windows still enumerates it.
@@ -264,7 +268,11 @@ fn playing(control: &IAudioSessionControl2) -> bool {
 }
 
 /// What the application list needs about one session.
-fn describe(control: &IAudioSessionControl2, volume: &ISimpleAudioVolume, names: &Names) -> Stream {
+pub(crate) fn describe(
+    control: &IAudioSessionControl2,
+    volume: &ISimpleAudioVolume,
+    names: &Names,
+) -> Stream {
     // SAFETY: plain calls on valid session interfaces; strings returned by COM are ours
     // (`take_string` frees them).
     let (system, pid, display, icon, level, muted) = unsafe {

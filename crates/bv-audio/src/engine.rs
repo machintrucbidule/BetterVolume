@@ -1,6 +1,6 @@
 //! The Windows implementation of [`AudioEngine`].
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver};
 use std::time::Instant;
 
@@ -18,10 +18,11 @@ use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL, STGM_READ};
 use bv_core::audio::bus_from_enumerator;
 use bv_core::volume;
 
-use crate::activity::{ActivityWatch, Heard};
+use crate::activity::{ActivityWatch, Heard, Wanted};
 use crate::com::{
     audio_error, pcwstr, string_property, take_string, u32_property, wide, Apartment,
 };
+use crate::exit::{ExitWatch, Watch};
 use crate::process;
 use crate::service::ServiceWatch;
 use crate::sessions::SessionWatch;
@@ -62,8 +63,8 @@ struct Core {
     watcher: IMMNotificationClient,
     endpoints: [Option<BoundEndpoint>; 2],
     sessions: Option<SessionWatch>,
-    /// Playing state of the sessions of the current output, followed at all times.
-    activity: Option<ActivityWatch>,
+    /// Playing state of the sessions of every available output, followed at all times.
+    activity: Vec<ActivityWatch>,
 }
 
 impl Core {
@@ -75,7 +76,13 @@ impl Core {
         let watcher = DeviceWatcher::create(sink);
         // SAFETY: `watcher` stays alive in `Core` until `drop` unregisters it.
         unsafe { enumerator.RegisterEndpointNotificationCallback(&watcher) }.ok()?;
-        Some(Self { enumerator, watcher, endpoints: [None, None], sessions: None, activity: None })
+        Some(Self {
+            enumerator,
+            watcher,
+            endpoints: [None, None],
+            sessions: None,
+            activity: Vec::new(),
+        })
     }
 
     fn device(&self, id: &str) -> Result<IMMDevice, AudioError> {
@@ -89,7 +96,7 @@ impl Drop for Core {
     fn drop(&mut self) {
         // Release in dependency order: sessions and endpoints, then the device watcher.
         self.sessions = None;
-        self.activity = None;
+        self.activity.clear();
         self.endpoints = [None, None];
         // SAFETY: `watcher` was registered by `Core::new`.
         let _ = unsafe { self.enumerator.UnregisterEndpointNotificationCallback(&self.watcher) };
@@ -98,6 +105,21 @@ impl Drop for Core {
 
 /// Most processes remembered as already identified (far more than play at once).
 const IDENTIFIED_LIMIT: usize = 256;
+
+/// A change kept for an application waiting on the current output.
+#[derive(Default)]
+struct Kept {
+    change: Wanted,
+    /// Its processes shown waiting when the change was asked: dropped once none runs.
+    processes: Vec<u32>,
+}
+
+/// What was read of one process.
+struct Identified {
+    app: Option<HeardApp>,
+    /// Handed out by `take_heard_apps` (it was heard playing).
+    announced: bool,
+}
 
 /// The audio engine. Lives on the UI thread (it is neither `Send` nor `Sync`).
 pub struct Engine {
@@ -108,15 +130,23 @@ pub struct Engine {
     sessions_wanted: bool,
     /// Friendly application names, kept across session watches.
     names: crate::sessions::Names,
-    /// Where each process was last heard, and the last move of the current output.
+    /// Where each process was last heard, and which output is the current one. Kept
+    /// apart from the audio objects: a restart of the audio service is no move.
     heard: Heard,
-    /// The current output the activity watch was last asked to follow.
-    output: Option<String>,
-    /// Processes already looked at for the Applications page (FR-096): each playing
-    /// process is identified once.
-    identified: HashSet<u32>,
+    /// The end of the processes remembered in `heard` (those that may be watched).
+    ends: HashMap<u32, ExitWatch>,
+    /// Processes already looked at: what could be read of them (`None`: nothing), and
+    /// whether they were handed out for the Applications page (FR-096), which only learns
+    /// processes heard playing.
+    identified: HashMap<u32, Identified>,
     /// Applications identified and not handed out yet.
     heard_apps: Vec<HeardApp>,
+    /// Volume or mute changes asked for applications that follow the current output
+    /// without a session there yet, given to them when their sessions appear.
+    wanted: HashMap<AppKey, Kept>,
+    /// The applications shown on the current output without a session there (last
+    /// published).
+    pending: Vec<(u32, AppKey)>,
     state: State,
     core: Option<Core>,
     service: Option<ServiceWatch>,
@@ -143,9 +173,11 @@ impl Engine {
             sessions_wanted: false,
             names: crate::sessions::Names::default(),
             heard: Heard::default(),
-            output: None,
-            identified: HashSet::new(),
+            ends: HashMap::new(),
+            identified: HashMap::new(),
             heard_apps: Vec::new(),
+            wanted: HashMap::new(),
+            pending: Vec::new(),
             state: State::default(),
             service,
             _apartment: apartment,
@@ -271,84 +303,299 @@ impl Engine {
         self.publish_sessions(changes);
     }
 
-    /// Starts or moves the activity watch so it follows the current output, whatever the
-    /// flyout does, and records what plays there.
+    /// Makes the activity watches follow every available output (the current one
+    /// included), whatever the flyout does, and records what plays on them.
     fn bind_activity(&mut self, force: bool) {
-        let wanted = self.current(Flow::Output).map(str::to_owned);
-        let generation = self.next_generation();
-        let sink = self.sink.clone();
-        // Kept apart from the watch, which may fail to start or be dropped with the audio
-        // objects: a restart of the audio service is not a move. A moment without any
-        // output is not one either: the output before it is the one left.
-        if let Some(to) = wanted.as_deref().filter(|to| self.output.as_deref() != Some(to)) {
-            self.heard.moved(self.output.as_deref(), to, Instant::now());
-            self.output = Some(to.to_owned());
+        let current = self.current(Flow::Output).map(str::to_owned);
+        // A moment without any output is no move: the output before it is the one left.
+        // A change kept for an application waiting on the output left is dropped: it was
+        // asked for that output.
+        if current.as_deref().is_some_and(|to| self.heard.output(to, Instant::now())) {
+            self.wanted.clear();
+        }
+        let mut outputs: Vec<String> = self.state.devices[Flow::Output.index()]
+            .iter()
+            .filter(|d| d.state.is_available())
+            .map(|d| d.id.clone())
+            .collect();
+        if let Some(current) = current.filter(|c| !outputs.contains(c)) {
+            outputs.push(current);
         }
         if let Some(core) = self.core.as_mut() {
-            let same = core.activity.as_ref().map(|w| w.device_id.as_str()) == wanted.as_deref();
-            if !same || force {
-                core.activity = None;
-                core.activity = wanted.as_deref().and_then(|id| {
-                    let device = core.device(id).ok()?;
-                    ActivityWatch::start(&device, id, generation, sink).ok()
-                });
+            if force {
+                core.activity.clear();
+            }
+            core.activity.retain(|w| outputs.contains(&w.device_id));
+            for id in &outputs {
+                if core.activity.iter().any(|w| w.device_id == *id) {
+                    continue;
+                }
+                self.generation += 1;
+                let Ok(device) = core.device(id) else { continue };
+                // A watch that fails to start is tried again at the next device change.
+                if let Ok(watch) =
+                    ActivityWatch::start(&device, id, self.generation, self.sink.clone())
+                {
+                    core.activity.push(watch);
+                }
             }
         }
-        self.scan_activity();
+        self.scan_activity(None);
     }
 
-    /// Records which processes play on the current output now.
-    fn scan_activity(&mut self) {
-        let Some(watch) = self.core.as_mut().and_then(|c| c.activity.as_mut()) else { return };
-        let (playing, present) = watch.scan();
-        let device = watch.device_id.clone();
-        self.heard.look(&device, &playing, &present, Instant::now());
-        self.identify(&playing);
-    }
-
-    /// Reads the executable and name of every process in `playing` not looked at yet, for
-    /// [`AudioEngine::take_heard_apps`]. Only processes that start playing are opened, once.
-    fn identify(&mut self, playing: &[u32]) {
-        for &pid in playing {
-            if pid == 0 || self.identified.contains(&pid) {
-                continue;
+    /// Records what plays on the outputs watched (only those whose watch has a generation
+    /// in `only`, if given), and gives the applications that follow the current output
+    /// the changes asked for them once their sessions appear there.
+    fn scan_activity(&mut self, only: Option<&[u64]>) {
+        // An "ended" signal may have been drained with others (a full re-read): the end of
+        // a process is checked here too (a cheap state query per process remembered).
+        self.forget_ended();
+        let now = Instant::now();
+        let mut looks = Vec::new();
+        if let Some(core) = self.core.as_mut() {
+            for watch in core.activity.iter_mut() {
+                if only.is_none_or(|g| g.contains(&watch.generation)) {
+                    let (playing, present) = watch.scan();
+                    looks.push((watch.device_id.clone(), playing, present));
+                }
             }
+        }
+        for (device, playing, present) in looks {
+            let new = self.heard.look(&device, &playing, &present, now);
+            self.watch_ends(&new);
+            self.announce(&playing);
+        }
+        self.drop_unknown_ends();
+        self.give_wanted();
+    }
+
+    /// Watches the end of the processes just remembered as heard.
+    fn watch_ends(&mut self, processes: &[u32]) {
+        for &pid in processes {
+            match ExitWatch::start(pid, self.sink.clone(), Signal::Ended) {
+                Watch::Running(watch) => {
+                    self.ends.insert(pid, watch);
+                    self.heard.end_watched(pid);
+                }
+                Watch::Gone => {
+                    self.heard.ended(pid);
+                    self.identified.remove(&pid);
+                }
+                // Forgotten once it has no session left on its output.
+                Watch::Unwatchable => {}
+            }
+        }
+    }
+
+    /// Drops the end watches of processes no longer remembered, and what was read of
+    /// them: Windows may give their identifier to another process.
+    fn drop_unknown_ends(&mut self) {
+        let heard = &self.heard;
+        let identified = &mut self.identified;
+        self.ends.retain(|pid, _| {
+            let known = heard.knows(*pid);
+            if !known {
+                identified.remove(pid);
+            }
+            known
+        });
+    }
+
+    /// Forgets the processes that have ended, and the changes kept for applications that
+    /// no longer have any process remembered.
+    fn forget_ended(&mut self) {
+        let ended: Vec<u32> =
+            self.ends.iter().filter(|(_, w)| w.has_exited()).map(|(pid, _)| *pid).collect();
+        for pid in &ended {
+            self.heard.ended(*pid);
+            self.identified.remove(pid);
+        }
+        self.drop_unknown_ends();
+        let heard = &self.heard;
+        self.wanted.retain(|_, kept| kept.processes.iter().any(|pid| heard.knows(*pid)));
+    }
+
+    /// What could be read of process `pid` (its executable and name), read once.
+    fn identity(&mut self, pid: u32) -> Option<&HeardApp> {
+        if pid == 0 {
+            return None;
+        }
+        if !self.identified.contains_key(&pid) {
             if self.identified.len() >= IDENTIFIED_LIMIT {
-                // Starting over only means looking at a playing process once more.
+                // Starting over only means looking at a process once more.
                 self.identified.clear();
             }
-            self.identified.insert(pid);
-            let Some(path) = process::image_path(pid) else { continue };
-            let name = crate::sessions::friendly_name_cached(&self.names, &path);
-            self.heard_apps.push(HeardApp {
+            let app = process::image_path(pid).map(|path| HeardApp {
                 app: AppKey::executable(&path),
-                name,
+                name: crate::sessions::friendly_name_cached(&self.names, &path),
                 path: Some(path),
             });
+            self.identified.insert(pid, Identified { app, announced: false });
         }
+        self.identified.get(&pid).and_then(|found| found.app.as_ref())
+    }
+
+    /// Hands out every process in `playing` not handed out yet, for
+    /// [`AudioEngine::take_heard_apps`]. Only processes heard playing are opened, once.
+    fn announce(&mut self, playing: &[u32]) {
+        for &pid in playing {
+            let Some(app) = self.identity(pid).cloned() else { continue };
+            if let Some(found) = self.identified.get_mut(&pid).filter(|f| !f.announced) {
+                found.announced = true;
+                self.heard_apps.push(app);
+            }
+        }
+    }
+
+    /// Gives the applications that now have sessions on the current output the changes
+    /// asked for them while they had none there.
+    fn give_wanted(&mut self) {
+        if self.wanted.is_empty() {
+            return;
+        }
+        let Some(current) = self.current(Flow::Output).map(str::to_owned) else { return };
+        let Some(core) = self.core.as_ref() else { return };
+        let watch = core.activity.iter().position(|w| w.device_id == current);
+        // The processes of the applications waiting that have a session there now.
+        let mut apps: Vec<(u32, AppKey)> = Vec::new();
+        if let Some(here) = watch.map(|i| &core.activity[i]) {
+            for pid in here.processes() {
+                let app = here.describe(pid, &self.names).map(|s| s.app);
+                if let Some(app) = app.filter(|app| self.wanted.contains_key(app)) {
+                    apps.push((pid, app));
+                }
+            }
+        }
+        let wanted: Vec<(AppKey, Wanted)> =
+            self.wanted.iter().map(|(app, kept)| (app.clone(), kept.change)).collect();
+        let Some(core) = self.core.as_mut() else { return };
+        for (app, change) in wanted {
+            let pids: Vec<u32> = apps.iter().filter(|(_, a)| *a == app).map(|(p, _)| *p).collect();
+            let mut given = watch.is_some_and(|i| core.activity[i].apply(&pids, change));
+            if let Some(sessions) = core.sessions.as_mut().filter(|s| s.device_id == current) {
+                if let Some(level) = change.volume {
+                    given |= sessions.set_volume(&app, level).is_ok();
+                }
+                if let Some(muted) = change.muted {
+                    given |= sessions.set_mute(&app, muted).is_ok();
+                }
+            }
+            if given {
+                self.wanted.remove(&app);
+            }
+        }
+    }
+
+    /// The row of process `pid`, which follows the current output without a session
+    /// there: described from its session on the output it was last heard on (or from its
+    /// executable when that output is gone), at its level there or the one asked for it.
+    fn waiting_stream(&mut self, pid: u32) -> Option<Stream> {
+        let watch = self.core.as_ref().and_then(|core| {
+            let device = self.heard.device(pid)?;
+            core.activity.iter().find(|w| w.device_id == device)
+        });
+        let described = watch.and_then(|w| w.describe(pid, &self.names));
+        let mut stream = match described {
+            Some(stream) => {
+                self.heard.set_level(pid, (stream.volume, stream.muted));
+                stream
+            }
+            None => {
+                let found = self.identity(pid)?.clone();
+                let (volume, muted) = self.heard.level(pid).unwrap_or((1.0, false));
+                Stream {
+                    app: found.app,
+                    process: pid,
+                    name: found.name,
+                    icon: found.path.clone(),
+                    path: found.path,
+                    volume,
+                    muted,
+                    heard_here: false,
+                }
+            }
+        };
+        if stream.app == AppKey::System {
+            return None;
+        }
+        if let Some(change) = self.wanted.get(&stream.app).map(|kept| kept.change) {
+            stream.volume = change.volume.unwrap_or(stream.volume);
+            stream.muted = change.muted.unwrap_or(stream.muted);
+        }
+        stream.heard_here = true;
+        Some(stream)
     }
 
     fn publish_sessions(&mut self, changes: &mut Changes) {
+        // Sound heard on an output left a moment ago counted as following the current
+        // output; once that moment is over, what plays there is set there: look again
+        // (only while someone looks at the list, on its next change).
+        if self.sessions_wanted && self.heard.settle(Instant::now()) {
+            self.scan_activity(None);
+        }
+        // A session of an application waiting for one may have just appeared.
+        self.give_wanted();
         let watch = self.core.as_ref().and_then(|c| c.sessions.as_ref());
         let read = watch.map(|w| (w.streams(), w.device_id.clone(), w.playing_processes()));
+        let mut pending = Vec::new();
         let streams = match read {
             Some((streams, device, playing)) => {
                 let present: Vec<u32> = streams.iter().map(|s| s.process).collect();
-                self.heard.look(&device, &playing, &present, Instant::now());
-                streams
+                let new = self.heard.look(&device, &playing, &present, Instant::now());
+                self.watch_ends(&new);
+                self.drop_unknown_ends();
+                let mut streams: Vec<Stream> = streams
                     .into_iter()
                     .map(|mut s| {
-                        s.heard_here = self.heard.get(s.process) == Some(device.as_str());
+                        s.heard_here = self.heard.listed_on(s.process, &device);
                         s
                     })
-                    .collect()
+                    .collect();
+                // Applications that follow the current output but have no session there
+                // yet (paused when it changed, FR-061).
+                let mut waiting = self.heard.listed(&device);
+                waiting.retain(|pid| !present.contains(pid));
+                waiting.sort_unstable();
+                // An application with a session listed here (another of its processes) is
+                // shown from that one: the level left behind would mask it.
+                let listed: Vec<AppKey> =
+                    streams.iter().filter(|s| s.heard_here).map(|s| s.app.clone()).collect();
+                for pid in waiting {
+                    let Some(stream) = self.waiting_stream(pid) else { continue };
+                    if !listed.contains(&stream.app) {
+                        pending.push((pid, stream.app.clone()));
+                        streams.push(stream);
+                    }
+                }
+                streams
             }
             None => Vec::new(),
         };
+        self.pending = pending;
         if streams != self.state.streams {
             self.state.streams = streams;
             changes.sessions = true;
         }
+    }
+
+    /// `result` of a change asked for `app`: when it has no session on the current output
+    /// but follows it, the change is kept for its sessions to come.
+    fn or_wanted(
+        &mut self,
+        app: &AppKey,
+        result: Result<(), AudioError>,
+        change: Wanted,
+    ) -> Result<(), AudioError> {
+        let processes: Vec<u32> =
+            self.pending.iter().filter(|(_, a)| a == app).map(|(pid, _)| *pid).collect();
+        if result != Err(AudioError::UnknownApp) || processes.is_empty() {
+            return result;
+        }
+        let kept = self.wanted.entry(app.clone()).or_default();
+        kept.change.volume = change.volume.or(kept.change.volume);
+        kept.change.muted = change.muted.or(kept.change.muted);
+        kept.processes = processes;
+        Ok(())
     }
 
     /// The audio service changed state: drop every audio object and, if the service runs,
@@ -469,6 +716,11 @@ impl AudioEngine for Engine {
     fn watch_sessions(&mut self, watch: bool) {
         if self.sessions_wanted != watch {
             self.sessions_wanted = watch;
+            if watch {
+                // Fresh state of every output: an application that has played on the
+                // same output ever since a switch sent no new signal.
+                self.scan_activity(None);
+            }
             let mut changes = Changes::default();
             self.bind_sessions(false, &mut changes);
         }
@@ -485,6 +737,8 @@ impl AudioEngine for Engine {
     fn set_app_volume(&mut self, app: &AppKey, percent: u8) -> Result<(), AudioError> {
         let level = volume::to_scalar(percent);
         let result = self.sessions_mut().and_then(|watch| watch.set_volume(app, level));
+        let change = Wanted { volume: Some(level), muted: Some(false) };
+        let result = self.or_wanted(app, result, change);
         let mut changes = Changes::default();
         self.publish_sessions(&mut changes);
         result.map_err(|e| self.device_failed(e))
@@ -492,6 +746,7 @@ impl AudioEngine for Engine {
 
     fn set_app_mute(&mut self, app: &AppKey, muted: bool) -> Result<(), AudioError> {
         let result = self.sessions_mut().and_then(|watch| watch.set_mute(app, muted));
+        let result = self.or_wanted(app, result, Wanted { volume: None, muted: Some(muted) });
         let mut changes = Changes::default();
         self.publish_sessions(&mut changes);
         result.map_err(|e| self.device_failed(e))
@@ -500,7 +755,8 @@ impl AudioEngine for Engine {
     fn process_signals(&mut self) -> Changes {
         let mut changes = Changes::default();
         let (mut devices, mut defaults, mut sessions, mut service) = (false, false, false, false);
-        let mut activity = false;
+        let mut activity: Vec<u64> = Vec::new();
+        let mut ended = false;
         let mut volumes: Vec<Signal> = Vec::new();
         while let Ok(signal) = self.receiver.try_recv() {
             match signal {
@@ -512,9 +768,14 @@ impl AudioEngine for Engine {
                     sessions |= current.is_some_and(|w| w.generation == generation);
                 }
                 Signal::Activity { generation } => {
-                    let current = self.core.as_ref().and_then(|c| c.activity.as_ref());
-                    activity |= current.is_some_and(|w| w.generation == generation);
+                    let watches = self.core.as_ref().map(|c| c.activity.as_slice());
+                    let known =
+                        watches.unwrap_or_default().iter().any(|w| w.generation == generation);
+                    if known && !activity.contains(&generation) {
+                        activity.push(generation);
+                    }
                 }
+                Signal::Ended => ended = true,
                 Signal::Endpoint { .. } | Signal::SessionVolume { .. } => volumes.push(signal),
             }
         }
@@ -537,11 +798,14 @@ impl AudioEngine for Engine {
                 changes.devices |= self.read_devices();
             }
         }
-        if activity {
-            // Where applications were last heard changed: the list may show other rows.
-            self.scan_activity();
+        if ended {
+            self.forget_ended();
         }
-        if sessions || activity {
+        if !activity.is_empty() {
+            // Where applications were last heard changed: the list may show other rows.
+            self.scan_activity(Some(&activity));
+        }
+        if sessions || ended || !activity.is_empty() {
             if sessions {
                 if let Some(watch) = self.core.as_mut().and_then(|c| c.sessions.as_mut()) {
                     watch.refresh();

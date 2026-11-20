@@ -36,10 +36,12 @@ pub(crate) enum Signal {
     Endpoint { flow: Flow, generation: u64, volume: f32, muted: bool },
     /// A session appeared, ended or was renamed on the current output: re-read sessions.
     Sessions { generation: u64 },
-    /// A session of the current output started or stopped playing, or appeared.
+    /// A session of an output started or stopped playing, or appeared.
     Activity { generation: u64 },
     /// The volume or mute state of one session changed.
     SessionVolume { generation: u64, session: u64, volume: f32, muted: bool },
+    /// A process remembered as heard playing has ended.
+    Ended,
     /// The Windows audio service changed state (stopping, restarting).
     Service,
 }

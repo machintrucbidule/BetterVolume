@@ -219,17 +219,26 @@ expanded).
   An application is identified by the file name of its executable (`AppKey`, FR-061);
   for processes that cannot be opened, the path is read from the session identifier, and
   their name and icon from that executable, through the `\\?\GLOBALROOT` prefix.
-- Activity watch (`activity.rs`): at all times, only the playing
-  state of the sessions of the current output is followed (session created, state
-  changed). The engine remembers, per process, the output where it was
-  last heard playing; published streams carry `heard_here`, and the application list
-  leaves out sessions not heard on the current output (`bv_core::apps::rows`). It also
-  remembers the last move of the current output (`activity::Heard`): for 30 s
-  (`FOLLOW_WINDOW`), every look at the output moved to gives it the processes last heard
-  on the output left that have a session there, including sessions that appear after the
-  switch (Windows moves the applications to a device just plugged in a moment after
-  making it the default); quick successive moves keep the outputs left before. The output
-  followed is kept apart from the watch, so a restart of the audio service is no move.
+- Activity watches (`activity.rs`): at all times, only the playing state of the sessions
+  of every available output is followed (session created, state changed; one watch per
+  output, rebuilt when the device list changes). The engine remembers, per process
+  (`activity::Heard`), the output where it was last heard playing and whether that output
+  was the current one then (or had stopped being it less than 30 s before,
+  `FOLLOW_WINDOW`: Windows moves the streams a moment after a switch). A process heard on
+  the current output *follows* it: it is listed on whatever output is current, with or
+  without a session there (FR-061); one heard elsewhere is listed on that output only.
+  Published streams carry `heard_here`, and the application list leaves out the others
+  (`bv_core::apps::rows`). A process that follows the current output without a session
+  there (a browser closes its stream when paused) gets a published stream of its own,
+  described from its session on the output it was last heard on (name, icon, level),
+  or from its executable and the last level read when that output is gone; a volume or
+  mute change on it is kept (`activity::Wanted`) and given to its sessions on the current
+  output as soon as they appear (`Engine::give_wanted`, from the activity watch or the
+  session watch, whichever sees them first). Remembered processes have their end watched
+  (`exit.rs`, signal `Ended`), so a row without a session goes when the application
+  closes; one whose end cannot be watched is forgotten once it has no session left on
+  its output. The current output is kept in `Heard`, apart from the watches, so a restart
+  of the audio service is no move. Opening the session watch re-scans every output first.
   A process heard playing for the first time is identified once (executable path and name; one
   that cannot be opened is left to the session list) and handed out by
   `take_heard_apps`, so the Applications page remembers it even while the flyout is

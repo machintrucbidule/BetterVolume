@@ -126,10 +126,16 @@ Wording: **must** = required for v1.
   are grouped and controlled together. An application is recognised by the file name of
   its executable (case ignored), not its folder: a program that moves to a new versioned
   folder at each update stays the same application, and two programs with the same file
-  name are one. When the output changes, an application last heard on the previous output
-  that comes to the new one (as most applications do, sometimes a moment after the switch,
-  for example on a device just plugged in) keeps its row there at once, without waiting to
-  be heard again.
+  name are one. An application last heard on the output that was the current one then
+  follows the current output: when the output changes, it keeps its row on the new one at
+  once, without waiting to be heard again, also while it is paused and has not opened any
+  sound channel there yet (some applications, browsers in particular, only open one when
+  they play again). Until it has a channel there, its slider shows the level it had on the
+  output left, and a volume or mute change made meanwhile is given to it as soon as it
+  does. An application last heard on another output than the current one (set to it in
+  the Windows settings, or by the application itself) is listed on that output only; one
+  that keeps playing on an output it was set to is taken as set there even if that output
+  was the current one when it started. An application is never listed on two outputs.
 - **FR-062** Row = application icon (click toggles mute for that app) + friendly name +
   slider + numeric value. Same slider behaviour as FR-051.
 - **FR-063** Rows appear and disappear live as applications start/stop using audio, without
