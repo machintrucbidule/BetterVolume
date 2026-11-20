@@ -432,9 +432,16 @@ fn load(args: &[String]) -> Result<(), LoaderError> {
     {
         return Err(LoaderError::Arguments);
     }
-    let copy = own_helper()
-        .and_then(|bytes| copy_helper(&bytes, Path::new(folder)))
-        .ok_or(LoaderError::Copy)?;
+    // The Store version's package folder is read-only and readable by the taskbar, and a
+    // copy in its data folder would be invisible to the taskbar (writes there are
+    // redirected): its own file is loaded as it is.
+    let copy = if crate::packaged::is_packaged() {
+        packaged_helper().ok_or(LoaderError::Copy)?
+    } else {
+        own_helper()
+            .and_then(|bytes| copy_helper(&bytes, Path::new(folder)))
+            .ok_or(LoaderError::Copy)?
+    };
 
     // SAFETY: a constant class name; a null window name matches by class only.
     let tray = unsafe { FindWindowW(w!("Shell_TrayWnd"), PCWSTR::null()) }
@@ -489,6 +496,12 @@ fn own_helper() -> Option<Vec<u8>> {
         Some(package) if package.kind == bv_core::package::Kind::Portable => package.payload().ok(),
         _ => std::fs::read(std::env::current_exe().ok()?.parent()?.join(HELPER_FILE)).ok(),
     }
+}
+
+/// The helper library beside this executable in the Store package, if it is there.
+fn packaged_helper() -> Option<PathBuf> {
+    let path = std::env::current_exe().ok()?.parent()?.join(HELPER_FILE);
+    path.is_file().then_some(path)
 }
 
 /// Copies the helper library (`bytes`) to `folder`, named after its content, unless that copy is

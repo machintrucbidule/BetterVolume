@@ -2,6 +2,7 @@
 # v2.1.0-beta.1) builds the two release files with every gate of tools\check.ps1 (release
 # build with build-machine paths remapped), then creates a DRAFT release holding
 # them. Nothing reaches users until a maintainer reviews the draft and clicks "Publish".
+# The Microsoft Store package made by the same gates is kept with the run, for the Store.
 #
 # The release build names the repository it was made from (BETTERVOLUME_REPOSITORY), so
 # the published program checks for updates there (FR-132); builds made elsewhere do not.
@@ -50,6 +51,16 @@ jobs:
       - name: Run all gates and make the release files
         shell: powershell
         run: .\tools\check.ps1
+
+      # The Store package (FR-134) is not a release file: it is submitted to the Microsoft
+      # Store, which signs it. It is kept with this run, built by the same gates.
+      - name: Keep the Store package
+        if: steps.version.outputs.preview == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: BetterVolume-${{ steps.version.outputs.version }}-store
+          path: target/package/BetterVolume-${{ steps.version.outputs.version }}.msix
+          if-no-files-found: error
 
       - name: Create the draft release
         shell: powershell

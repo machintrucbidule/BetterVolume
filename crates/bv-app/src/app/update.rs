@@ -94,6 +94,8 @@ impl UpdateKey {
 #[derive(Default)]
 pub(super) struct UpdateSession {
     platform: Option<UpdatePlatform>,
+    /// The Store version: the Microsoft Store updates it (FR-134).
+    by_store: bool,
     /// The releases of the last answer.
     releases: Vec<Release>,
     /// A check runs (`true`: asked by the user).
@@ -130,6 +132,12 @@ impl<E: AudioEngine> App<E> {
     pub fn set_update_platform(&mut self, platform: UpdatePlatform) {
         self.update.platform = Some(platform);
         self.update.timer_stale = true;
+    }
+
+    /// The Store version (FR-134): no update check of its own, the About page says the
+    /// Store installs new versions.
+    pub fn set_updates_by_store(&mut self) {
+        self.update.by_store = true;
     }
 
     fn previews(&self) -> bool {
@@ -412,11 +420,16 @@ impl<E: AudioEngine> App<E> {
         let button = |label: Msg, accent| CardControl::Button { label: text(label), accent };
         let mut blocks = Vec::new();
         let Some(platform) = &self.update.platform else {
+            let (title, help) = if self.update.by_store {
+                (Msg::UpdateByStore, Msg::UpdateByStoreHelp)
+            } else {
+                (Msg::UpdateUnavailable, Msg::UpdateUnavailableHelp)
+            };
             blocks.push(card(
                 UpdateKey::Status,
                 Icon::Update,
-                text(Msg::UpdateUnavailable),
-                Some(text(Msg::UpdateUnavailableHelp)),
+                text(title),
+                Some(text(help)),
                 CardControl::None,
                 true,
             ));

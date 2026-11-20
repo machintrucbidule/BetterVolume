@@ -27,6 +27,10 @@
 //! `app::update`); on the user's click, the installed copy starts the downloaded setup
 //! file with `--update`, a portable copy replaces its own file and restarts with
 //! `--replaced <pid>`.
+//!
+//! Run from its Microsoft Store package (FR-134), it keeps its settings in the package's
+//! folder (copying once those of a GitHub copy found on this PC), leaves updates to the
+//! Store and starts with Windows through the package's startup task.
 #![forbid(unsafe_code)]
 #![windows_subsystem = "windows"]
 
@@ -248,9 +252,13 @@ pub(crate) fn local_folder() -> Option<PathBuf> {
 }
 
 /// Folder of the settings and of the log (FR-125): the tools' folder, else beside the
-/// portable file when that folder can be written, else the user's own folder.
+/// portable file when that folder can be written, else the Store package's own folder
+/// (FR-134), else the user's own folder.
 fn data_folder(portable: bool) -> Option<PathBuf> {
-    override_folder().or_else(|| portable.then(portable_folder).flatten()).or_else(local_folder)
+    override_folder()
+        .or_else(|| portable.then(portable_folder).flatten())
+        .or_else(bv_shell::package_data_folder)
+        .or_else(local_folder)
 }
 
 /// The folder of the portable file, if a file can be created there.
@@ -265,7 +273,10 @@ fn portable_folder() -> Option<PathBuf> {
 /// Folder of the copies of the taskbar helper library: never beside a portable file (a
 /// removable drive must not hold a library the taskbar has loaded).
 fn helper_folder() -> PathBuf {
-    override_folder().or_else(local_folder).unwrap_or_else(std::env::temp_dir)
+    override_folder()
+        .or_else(bv_shell::package_data_folder)
+        .or_else(local_folder)
+        .unwrap_or_else(std::env::temp_dir)
 }
 
 fn main() -> ExitCode {
@@ -283,6 +294,14 @@ fn main() -> ExitCode {
             bv_shell::log::init(&folder);
         }
         let code = bv_shell::run_loader(args.get(2..).unwrap_or_default());
+        return ExitCode::from(u8::try_from(code).unwrap_or(1));
+    }
+    // The Store version's writer of the taskbar preference of its icon: write, exit.
+    if args.get(1).map(String::as_str) == Some(bv_shell::PROMOTER_ARGUMENT) {
+        if let Some(folder) = data_folder(portable) {
+            bv_shell::log::init(&folder);
+        }
+        let code = bv_shell::run_promoter(args.get(2..).unwrap_or_default());
         return ExitCode::from(u8::try_from(code).unwrap_or(1));
     }
     // The uninstaller and the installer: a window of their own, no tray icon.
@@ -319,6 +338,12 @@ fn main() -> ExitCode {
 
     // FR-125, FR-126: the saved settings, or the defaults (never blocks the start).
     let mut store = data.as_ref().map(|folder| Store::new(folder));
+    // FR-134: the Store version's first start takes the settings of a GitHub copy.
+    if let (Some(store), true, Some(other)) =
+        (&store, bv_shell::is_packaged() && override_folder().is_none(), local_folder())
+    {
+        store.import_once(&other);
+    }
     let (settings, loaded) =
         store.as_mut().map_or_else(|| (Settings::default(), Loaded::Missing), Store::load);
     if loaded == Loaded::SetAside {
@@ -370,7 +395,10 @@ fn main() -> ExitCode {
         // The installed copy updates with the setup file, a portable one with the portable
         // file when its folder can be written; otherwise "Install" opens the release page.
         updater::clean_up();
-        if let Some(source) = updater::source() {
+        if bv_shell::is_packaged() {
+            // FR-134: the Store updates its package itself.
+            app.set_updates_by_store();
+        } else if let Some(source) = updater::source() {
             let file = if portable {
                 portable_folder().map(|_| Kind::Portable)
             } else if bv_shell::running_installed() {

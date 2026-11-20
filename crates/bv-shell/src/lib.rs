@@ -31,6 +31,7 @@ pub mod log;
 mod media;
 mod menu;
 mod package;
+mod packaged;
 mod placement;
 mod popup;
 mod processes;
@@ -61,11 +62,12 @@ pub use locale::os_display_languages;
 pub use media::MediaKey;
 pub use menu::MenuLine;
 pub use package::Package;
+pub use packaged::{is_packaged, package_data_folder, package_family};
 pub use processes::running_executables;
 pub use settings::WindowPlace;
 pub use system::{open_folder, SystemPage};
 pub use taskbar::{remove_unused_helper_copies, run_loader, VolumeIconOutcome, LOADER_ARGUMENT};
-pub use tray::show_icon_on_taskbar;
+pub use tray::{run_promoter, show_icon_on_taskbar, PROMOTER_ARGUMENT};
 pub use update::{
     launch_with, local_time_text, open_web_page, wait_for_process, REPLACED_ARGUMENT,
     UPDATE_ARGUMENT,

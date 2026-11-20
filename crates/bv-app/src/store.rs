@@ -50,6 +50,32 @@ impl Store {
         self.folder.join(name)
     }
 
+    /// The Store version's first start (FR-134): when this folder has no settings file yet
+    /// and `other` (the folder of a GitHub copy on this PC) has one, it is copied here once;
+    /// afterwards the two copies keep their own settings. Returns whether a file was copied.
+    pub fn import_once(&self, other: &Path) -> bool {
+        let source = other.join(FILE);
+        if self.path(FILE).exists() || !source.is_file() {
+            return false;
+        }
+        // Copied beside, then renamed: a half-copied file is never read as the settings.
+        let temporary = self.path(TEMPORARY);
+        let copied = std::fs::create_dir_all(&self.folder)
+            .and_then(|()| std::fs::copy(&source, &temporary))
+            .and_then(|_| std::fs::rename(&temporary, self.path(FILE)));
+        match copied {
+            Ok(()) => {
+                bv_shell::log::info("settings: copied from the other copy of BetterVolume");
+                true
+            }
+            Err(error) => {
+                let _ = std::fs::remove_file(&temporary);
+                bv_shell::log::error(&format!("settings: cannot copy the other copy's: {error}"));
+                false
+            }
+        }
+    }
+
     /// Reads the settings. Never fails: problems are logged and give the defaults.
     pub fn load(&mut self) -> (Settings, Loaded) {
         let text = match std::fs::read(self.path(FILE)) {
@@ -143,6 +169,36 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn the_other_copys_settings_are_copied_once() {
+        let other = Folder::new("import-other");
+        let mut theirs = Settings::default();
+        theirs.general.wheel_step = 7;
+        assert!(Store::new(&other.0).save(&theirs));
+        let own = Folder::new("import-own");
+        let mut store = Store::new(&own.0);
+        assert!(store.import_once(&other.0), "copied at the first start");
+        assert!(!own.0.join(TEMPORARY).exists(), "no temporary file left");
+        assert_eq!(store.load(), (theirs.clone(), Loaded::Read));
+        // Afterwards each keeps its own: a later change of the other copy is not taken.
+        let mut mine = theirs.clone();
+        mine.general.wheel_step = 4;
+        assert!(store.save(&mine));
+        theirs.general.wheel_step = 9;
+        assert!(Store::new(&other.0).save(&theirs));
+        assert!(!store.import_once(&other.0));
+        assert_eq!(store.load().0.general.wheel_step, 4);
+    }
+
+    #[test]
+    fn nothing_is_imported_without_the_other_copys_file() {
+        let other = Folder::new("import-none");
+        let own = Folder::new("import-none-own");
+        let mut store = Store::new(&own.0);
+        assert!(!store.import_once(&other.0));
+        assert_eq!(store.load().1, Loaded::Missing);
     }
 
     #[test]

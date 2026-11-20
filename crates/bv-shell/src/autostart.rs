@@ -5,6 +5,9 @@
 //! Windows' "Startup apps" page (and Task Manager) disable an entry without removing it,
 //! by a flag under `StartupApproved\Run`: an entry is on only if it exists, launches this
 //! executable, and is not disabled there. Turning it on clears that flag.
+//!
+//! The Store version has no `Run` entry: its package's startup task plays that part
+//! (`packaged`).
 
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -91,6 +94,9 @@ fn read_flag(name: PCWSTR) -> Option<Vec<u8>> {
 
 /// Whether BetterVolume starts with Windows (this executable, not disabled by Windows).
 pub fn autostart_enabled() -> bool {
+    if crate::packaged::is_packaged() {
+        return crate::packaged::autostart_enabled();
+    }
     this_executable().is_some_and(|exe| autostart_enabled_for(&exe))
 }
 
@@ -108,6 +114,9 @@ fn launches(exe: &Path) -> bool {
 /// Turns starting with Windows on or off. Returns whether the change was made (a failure
 /// is logged; the caller re-reads [`autostart_enabled`]).
 pub fn set_autostart(on: bool) -> bool {
+    if crate::packaged::is_packaged() {
+        return crate::packaged::set_autostart(on);
+    }
     this_executable().is_some_and(|exe| set_for(&exe, on))
 }
 

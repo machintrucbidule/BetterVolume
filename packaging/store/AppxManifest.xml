@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Manifest of the Microsoft Store package (FR-134), filled and packed by tools\msix.ps1:
+  $VERSION$ becomes the workspace version followed by ".0" (the Store wants the last
+  number at 0). The identity is the one the Store gave the product; the package is
+  signed by the Store when it is published.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap desktop rescap">
+  <Identity
+    Name="MachinTrucBidule.BetterVolume"
+    Publisher="CN=B1CA8A38-53D1-423D-8DD8-EB72B5F4193A"
+    Version="$VERSION$"
+    ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>BetterVolume</DisplayName>
+    <PublisherDisplayName>MachinTrucBidule</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <!-- Windows 11 only (FR-130). -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-US" />
+    <Resource Language="fr-FR" />
+    <Resource Language="de-DE" />
+    <Resource Language="es-ES" />
+    <Resource Language="it-IT" />
+    <Resource Language="pt-BR" />
+    <Resource Language="nl-NL" />
+    <Resource Language="pl-PL" />
+    <Resource Language="ja-JP" />
+    <Resource Language="zh-Hans" />
+  </Resources>
+  <Applications>
+    <Application Id="BetterVolume" Executable="BetterVolume.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="BetterVolume"
+        Description="BetterVolume"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <!-- Start with Windows (FR-074): on from the first start, like the installed version. -->
+        <desktop:Extension Category="windows.startupTask" Executable="BetterVolume.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="BetterVolume" Enabled="true" DisplayName="BetterVolume" />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

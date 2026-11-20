@@ -118,6 +118,20 @@ fn a_copy_without_release_service_only_says_so() {
 }
 
 #[test]
+fn the_store_version_leaves_updates_to_the_store() {
+    let mut app = App::new(FakeEngine::new(), Settings::default(), Language::ENGLISH);
+    app.set_updates_by_store();
+    assert_eq!(app.take_update_timer(NOW), None, "no check of its own");
+    let content = about(&mut app);
+    let status = card(&content, UpdateKey::Status).expect("status card");
+    assert_eq!(status.title, "Updates come from the Microsoft Store");
+    assert_eq!(status.control, CardControl::None);
+    assert!(card(&content, UpdateKey::Automatic).is_none());
+    assert!(card(&content, UpdateKey::Previews).is_none());
+    assert!(app.flyout_content().update.is_none());
+}
+
+#[test]
 fn checks_a_while_after_start_then_once_a_day() {
     let (mut app, calls) = app();
     assert_eq!(app.take_update_timer(NOW), Some(Some(FIRST_DELAY)));

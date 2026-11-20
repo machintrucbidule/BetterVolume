@@ -399,16 +399,20 @@ pub(crate) enum Promotion {
 pub(crate) fn promote(only_undecided: bool) -> Promotion {
     use windows::core::HSTRING;
     use windows::Win32::System::Registry::{
-        RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegSetKeyValueW, HKEY, HKEY_CURRENT_USER,
-        KEY_READ, REG_DWORD,
+        RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, HKEY, HKEY_CURRENT_USER, KEY_READ,
     };
     let Ok(exe) = std::env::current_exe() else { return Promotion::NoRecord };
     let exe = exe.to_string_lossy().to_string();
-    const SETTINGS: &str = "Control Panel\\NotifyIconSettings";
     let mut key = HKEY::default();
     // SAFETY: a constant path and a valid out-pointer; the key is closed below.
     if unsafe {
-        RegOpenKeyExW(HKEY_CURRENT_USER, &HSTRING::from(SETTINGS), None, KEY_READ, &mut key)
+        RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            &HSTRING::from(NOTIFY_ICON_SETTINGS),
+            None,
+            KEY_READ,
+            &mut key,
+        )
     }
     .is_err()
     {
@@ -437,7 +441,7 @@ pub(crate) fn promote(only_undecided: bool) -> Promotion {
         }
         index += 1;
         let len = (len as usize).min(name.len());
-        let sub = format!("{SETTINGS}\\{}", String::from_utf16_lossy(&name[..len]));
+        let sub = format!("{NOTIFY_ICON_SETTINGS}\\{}", String::from_utf16_lossy(&name[..len]));
         let path = crate::registry::read_text(&sub, "ExecutablePath")
             .and_then(|p| resolve_known_folder(&p));
         let uid = crate::registry::read_dword(&sub, "UID");
@@ -449,26 +453,106 @@ pub(crate) fn promote(only_undecided: bool) -> Promotion {
                 continue;
             }
             outcome = Promotion::Promoted;
-            let one: u32 = 1;
-            // SAFETY: a valid key path and a 4-byte value.
-            let status = unsafe {
-                RegSetKeyValueW(
-                    HKEY_CURRENT_USER,
-                    &HSTRING::from(sub.as_str()),
-                    windows::core::w!("IsPromoted"),
-                    REG_DWORD.0,
-                    Some((&raw const one).cast()),
-                    4,
-                )
-            };
-            if status.is_err() {
-                crate::log::error("tray icon: taskbar preference not written");
-            }
+            write_promoted(&name[..len]);
         }
     }
     // SAFETY: the key opened above.
     let _ = unsafe { RegCloseKey(key) };
     outcome
+}
+
+/// Started as `<exe> --tray-promote <record>`, the Store version's helper process has the
+/// preference written ([`run_promoter`]).
+pub const PROMOTER_ARGUMENT: &str = "--tray-promote";
+
+/// Where Windows keeps its records of tray icons.
+const NOTIFY_ICON_SETTINGS: &str = "Control Panel\\NotifyIconSettings";
+
+/// Sets `IsPromoted` = 1 on the record named `record` (its key name, UTF-16).
+///
+/// The Store version's own writes under `HKEY_CURRENT_USER` go to a private copy the
+/// taskbar never reads (FR-134), and so do those of the processes it starts and of any
+/// program of its package folder. Only the children of a process started with the right
+/// policy, from outside the package folder, write the real registry: a helper process
+/// started that way has Windows' `reg.exe` write the value ([`run_promoter`]).
+fn write_promoted(record: &[u16]) {
+    let record = String::from_utf16_lossy(record);
+    if crate::packaged::is_packaged() {
+        let started = std::env::current_exe().is_ok_and(|exe| {
+            crate::packaged::spawn_with_free_children(&exe, &[PROMOTER_ARGUMENT, &record])
+        });
+        if !started {
+            crate::log::error("tray icon: preference writer not started");
+        }
+    } else if !set_promoted(&record) {
+        crate::log::error("tray icon: taskbar preference not written");
+    }
+}
+
+/// Writes `IsPromoted` = 1 under the record `record`. Returns whether it was written.
+fn set_promoted(record: &str) -> bool {
+    use windows::core::HSTRING;
+    use windows::Win32::System::Registry::{RegSetKeyValueW, HKEY_CURRENT_USER, REG_DWORD};
+    let one: u32 = 1;
+    let key = format!("{NOTIFY_ICON_SETTINGS}\\{record}");
+    // SAFETY: a valid key path and a 4-byte value.
+    let status = unsafe {
+        RegSetKeyValueW(
+            HKEY_CURRENT_USER,
+            &HSTRING::from(key.as_str()),
+            windows::core::w!("IsPromoted"),
+            REG_DWORD.0,
+            Some((&raw const one).cast()),
+            4,
+        )
+    };
+    status.is_ok()
+}
+
+/// Whether `record` can be the name of a record: Windows names them with digits only.
+/// The helper process refuses anything else, so it cannot be used to write elsewhere.
+fn is_record_name(record: &str) -> bool {
+    !record.is_empty() && record.len() <= 24 && record.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// The Store version's helper process (`<exe> --tray-promote <record>`, started by
+/// [`write_promoted`]): has Windows' `reg.exe`, which runs outside the package's
+/// redirection, write the preference of that record. Returns the exit code.
+pub fn run_promoter(args: &[String]) -> i32 {
+    let [record] = args else { return 2 };
+    if !is_record_name(record) {
+        return 2;
+    }
+    // Only an existing record of Windows: `reg add` would create a missing one.
+    let key = format!("{NOTIFY_ICON_SETTINGS}\\{record}");
+    if crate::registry::read_dword(&key, "UID").is_none() {
+        return 1;
+    }
+    let Some(reg) = system_folder().map(|folder| folder.join("reg.exe")) else { return 1 };
+    let key = format!("HKCU\\{NOTIFY_ICON_SETTINGS}\\{record}");
+    use std::os::windows::process::CommandExt;
+    use windows::Win32::System::Threading::CREATE_NO_WINDOW;
+    let written = std::process::Command::new(reg)
+        .args(["add", &key, "/v", "IsPromoted", "/t", "REG_DWORD", "/d", "1", "/f"])
+        .creation_flags(CREATE_NO_WINDOW.0)
+        .status()
+        .is_ok_and(|status| status.success());
+    if written {
+        0
+    } else {
+        crate::log::error("tray icon: taskbar preference not written");
+        1
+    }
+}
+
+/// Windows' System32 folder.
+fn system_folder() -> Option<std::path::PathBuf> {
+    use windows::Win32::System::SystemInformation::GetSystemDirectoryW;
+    let mut buffer = [0u16; 260];
+    // SAFETY: a valid buffer; the call writes at most its length.
+    let len = unsafe { GetSystemDirectoryW(Some(&mut buffer)) } as usize;
+    (len > 0 && len < buffer.len())
+        .then(|| std::path::PathBuf::from(String::from_utf16_lossy(&buffer[..len])))
 }
 
 /// An executable path as Windows records it for tray icons: absolute, or a known-folder
@@ -489,7 +573,18 @@ fn resolve_known_folder(path: &str) -> Option<String> {
 
 #[cfg(test)]
 mod promote_tests {
-    use super::resolve_known_folder;
+    use super::{is_record_name, resolve_known_folder, run_promoter};
+
+    #[test]
+    fn the_preference_writer_only_takes_a_record_name() {
+        assert!(is_record_name("11500770994978508385"));
+        for bad in ["", "..\\Run", "12 34", "Software", "1234567890123456789012345"] {
+            assert!(!is_record_name(bad), "{bad}");
+            assert_eq!(run_promoter(&[bad.to_owned()]), 2, "{bad}");
+        }
+        assert_eq!(run_promoter(&[]), 2);
+        assert_eq!(run_promoter(&["1".to_owned(), "2".to_owned()]), 2);
+    }
 
     #[test]
     fn absolute_paths_are_kept_and_known_folders_resolved() {

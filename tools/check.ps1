@@ -4,9 +4,9 @@
 #
 # Gates, in order: formatting, lints (warnings are errors), unsafe-code policy, tests,
 # release build (with build-machine paths remapped), no local path in the executable,
-# release files (setup and portable, read back), smoke test + footprint measurement
-# against the budget. Exit code 0 only if every gate passes. The CI workflow runs this
-# same script.
+# release files (setup and portable, read back), Store package (read back), smoke test +
+# footprint measurement against the budget. Exit code 0 only if every gate passes. The CI
+# workflow runs this same script.
 #
 # Only a run whose last line is exactly "CHECK PASSED" validates a change. -SkipMeasure and an
 # idle period under 60 s exist for quick iterations and say so in their last line.
@@ -212,6 +212,7 @@ Invoke-Gate 'Release build' { Invoke-ReleaseBuild }
 Invoke-Gate 'No local paths in the executable' { Test-NoLocalPaths }
 Invoke-Gate 'No library looked for beside the executable' { Test-Imports }
 Invoke-Gate 'Release files (setup and portable)' { & (Join-Path $PSScriptRoot 'package.ps1') }
+Invoke-Gate 'Store package' { & (Join-Path $PSScriptRoot 'msix.ps1') }
 if ($SkipMeasure) {
     Write-Host ''
     Write-Host '=== Smoke test and footprint: SKIPPED (-SkipMeasure) ==='

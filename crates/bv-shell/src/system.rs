@@ -1,4 +1,5 @@
-//! Windows sound screens the context menu opens (FR-100).
+//! Windows screens BetterVolume opens: the sound screens of the context menu (FR-100),
+//! Windows' "Startup apps" page (Store version, FR-074).
 
 use std::os::windows::ffi::OsStrExt;
 
@@ -6,7 +7,7 @@ use windows::core::{w, PCWSTR};
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
-/// A Windows sound screen.
+/// A Windows screen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SystemPage {
     /// Settings > System > Sound.
@@ -15,6 +16,8 @@ pub enum SystemPage {
     VolumeMixer,
     /// The classic Sound control panel.
     ClassicSoundPanel,
+    /// Settings > Apps > Startup.
+    StartupApps,
 }
 
 impl SystemPage {
@@ -24,6 +27,7 @@ impl SystemPage {
             SystemPage::SoundSettings => (w!("ms-settings:sound"), PCWSTR::null()),
             SystemPage::VolumeMixer => (w!("ms-settings:apps-volume"), PCWSTR::null()),
             SystemPage::ClassicSoundPanel => (w!("control.exe"), w!("mmsys.cpl")),
+            SystemPage::StartupApps => (w!("ms-settings:startupapps"), PCWSTR::null()),
         }
     }
 

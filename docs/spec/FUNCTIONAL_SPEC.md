@@ -184,7 +184,7 @@ and notifications" (FR-082, FR-077).
 - **FR-072** Device-switch scope: "media and calls" (default) / "media only" / "calls only".
 - **FR-073** Wheel step: 1–10, default 2. Applies to tray icon and all sliders.
 - **FR-074** Start with Windows: on/off (default on for the installed version; the installer
-  also offers it).
+  also offers it; on from the first start for the Microsoft Store version, FR-134).
 - **FR-075** Language: "Automatic" (OS display language, English fallback, FR-121) or an
   explicit language from those shipped, each in its own name, in alphabetical order of
   those names as the Windows language list (Latin scripts first, then Japanese and
@@ -372,6 +372,24 @@ and notifications" (FR-082, FR-077).
   gives it) and its kind (setup or portable) are the ones announced.
 - **FR-133** Releases are not code-signed initially; the documentation explains the
   Windows first-run warning.
+- **FR-134** Microsoft Store version: the same program in a Store package (signed by the
+  Store, so no first-run warning), from version 2.2.0. It differs only where Windows
+  requires it:
+  - Updates come from the Store: no update check of its own, no flyout line; the About
+    page says so instead of the update cards.
+  - Its settings and log are kept in the package's own folder, which Windows removes at
+    uninstall. When it starts without settings of its own (its first start, until it
+    saves any) and a copy from GitHub left settings on this PC, they are copied once;
+    afterwards each copy keeps its own.
+  - Start with Windows is the package's startup task, shown in Windows' "Startup apps"
+    page. Turning the switch on cannot override the user's own choice made there: that
+    page is then opened for the user to turn it on.
+  - Hiding the Windows volume icon and showing BetterVolume's icon on the taskbar work as
+    in the other versions.
+  - Uninstalling (by Windows) cannot run BetterVolume: the Windows volume icon comes back
+    when BetterVolume ends, but this PC stays in Home Assistant unless the link was turned
+    off first (FR-116); the documentation says so.
+  - Only one copy runs at a time, whichever is started first (FR-001).
 
 ## 12. Quality requirements
 

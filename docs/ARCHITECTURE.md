@@ -423,10 +423,12 @@ One executable plays every role; what it does is decided at start (`bv-app/src/m
 | Started as | Role |
 |---|---|
 | `--taskbar-helper …` | loader child of the taskbar helper (§7) |
+| `--tray-promote <record>` | Store version only: has `reg.exe` show our tray icon on the taskbar (§9, Microsoft Store package) |
 | `--uninstall` | the uninstaller window (`bv-app/src/setup.rs`) |
 | the setup file (trailer of kind "setup") | the installer window (`setup.rs`) |
 | the portable file (trailer of kind "portable") | the application, settings and log beside the file (or in the profile when that folder cannot be written) |
 | anything else (installed copy, development build) | the application, settings and log in `%LOCALAPPDATA%\BetterVolume` |
+| anything else, run from the Microsoft Store package | the application, settings and log in the package's own folder (§9, Microsoft Store package) |
 
 Release files: `[program][taskbar helper library][32-byte trailer]`, format and version
 ordering in `bv_core::package` (one definition, unit-tested); `bv_shell::Package` reads
@@ -473,6 +475,32 @@ on a thread and reports through the shell's waker.
 Resources (`bv-app/build.rs`): the application icon (`assets/icon/BetterVolume.ico`,
 rendered from two SVG drawings by `tools/icon.ps1`) and the version information are
 written as a compiled `.res` file the MSVC linker takes directly.
+
+### Microsoft Store package (FR-134)
+
+`tools\msix.ps1` (gate of `tools\check.ps1`) packs the release program and the helper
+library with `packaging\store\AppxManifest.xml` (identity given by the Store; full-trust
+desktop application; startup task "BetterVolume", on at the first start) and the images of
+`packaging\store\Assets` (rendered from the icon drawings by `tools\store-assets.ps1`,
+indexed in `resources.pri` by `makepri`) into `target\package\BetterVolume-<version>.msix`,
+then unpacks it and checks it. Unsigned: the Store signs it. The release workflow keeps it
+with the run.
+
+At run time `bv_shell::package_family()` (`GetCurrentPackageFamilyName`, read once) tells
+the Store version. A packaged process's writes under `%LOCALAPPDATA%` and
+`HKEY_CURRENT_USER` go to a private copy other programs never see, and so do those of
+the processes it starts and of any program of its package folder. Hence:
+
+| Need | Store version |
+|---|---|
+| Settings and log | `%LOCALAPPDATA%\Packages\<family>\LocalState` (`package_data_folder`); at the first start `Store::import_once` copies the settings of `%LOCALAPPDATA%\BetterVolume` |
+| Start with Windows | `Windows.ApplicationModel.StartupTask` (`packaged.rs`); a task the user disabled cannot be enabled by the app: Windows' "Startup apps" page is opened |
+| Taskbar helper | loaded by the taskbar straight from the package folder (read-only, readable by the taskbar), no copy |
+| `IsPromoted` of our tray icon (§7) | written by `reg.exe`, started by a helper process (`--tray-promote <record>`) that BetterVolume starts with the "children run outside the package" process policy (`spawn_with_free_children`); the record name is checked to be digits only |
+| Updates | none of its own (`App::set_updates_by_store`) |
+
+Every other part is the same program. The single-instance mutex and the window messages
+are shared with a GitHub copy (tested: the second copy hands over and exits).
 
 ## 10. Updates (FR-132)
 
