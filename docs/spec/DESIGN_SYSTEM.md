@@ -59,13 +59,14 @@ animation effects, text scaling.
   is unchanged (its waves or cross at their own size, cut at x = 7.55 DIP, the middle of
   the gap) and only its speaker (x 0–7 DIP) is replaced by the device drawing, 7 DIP
   wide, in the glyph colour.
-- Look "BetterVolume" (FR-084): our own waves (`tray::waves`): three arcs of ±56° about a
-  centre on y = 8, stroke 1 DIP (the Windows one), 1.45 DIP apart (closer, they merged
-  into one stroke at the real size), the outer one 0.2 DIP from the right edge; the
-  cross of the muted level is two 1-DIP strokes there. Left of them, 1 DIP away: with the
-  speaker, the speaker of the application icon (its 16–32 px drawing, without the two
-  roads), 7.6 DIP wide; with a device, the arcs start smaller (first radius 1.4 instead
-  of 1.9) and the device drawing gets 8.28 DIP, more than half the icon. Everything is
+- Look "Colourful" (FR-084; named "BetterVolume" up to 2.1.5): our own waves
+  (`tray::waves`): three arcs of ±56° about a centre on y = 8, stroke 1 DIP (the Windows
+  one), 1.45 DIP apart (closer, they merged into one stroke at the real size), the outer
+  one 0.2 DIP from the right edge; the cross of the muted level is two 1-DIP strokes
+  there. Left of them, 1 DIP away: with the speaker, our filled speaker (the speaker of
+  the 16–32 px drawing of an earlier application icon, without its two roads), 7.6 DIP
+  wide; with a device, the arcs start smaller (first radius 1.4 instead of 1.9) and the
+  device drawing gets 8.28 DIP, more than half the icon. Everything is
   painted with one vertical gradient of accent shades, from y = 2 to y = 14 (`TrayColors::accent`):
   accent light 3 to light 1 on a dark taskbar, accent dark 1 to dark 3 on a light one;
   the waves not reached are a pale accent (accent light 2 at 32 % on a dark taskbar,

@@ -131,7 +131,7 @@ const TRAY_SIZES: [(TrayIconSize, Msg); 2] = [
 
 const TRAY_LOOKS: [(TrayIconLook, Msg); 2] = [
     (TrayIconLook::Windows, Msg::SettingsTrayLookWindows),
-    (TrayIconLook::BetterVolume, Msg::SettingsTrayLookBettervolume),
+    (TrayIconLook::Colourful, Msg::SettingsTrayLookColourful),
 ];
 
 const FLYOUT_HEIGHTS: [(FlyoutHeight, Msg); 2] = [
@@ -930,7 +930,7 @@ mod tests {
             [
                 ("Size", vec!["Normal", "Large"], 0),
                 ("Picture", vec!["Speaker", "Device"], 0),
-                ("Style", vec!["Windows", "BetterVolume"], 0),
+                ("Style", vec!["Windows", "Colourful"], 0),
             ]
         );
     }
@@ -990,10 +990,7 @@ mod tests {
         let card = content.picture_cards().next().expect("tray icon card");
         let picture = |group: usize, tile: usize| card.groups[group].tiles[tile].picture;
         let current = app.tray_icon();
-        assert_eq!(
-            (current.look, current.large, current.badge),
-            (TrayLook::BetterVolume, true, None)
-        );
+        assert_eq!((current.look, current.large, current.badge), (TrayLook::Colourful, true, None));
         // Size: normal / large, in the chosen look and picture.
         assert!(!picture(0, 0).large && picture(0, 1).large);
         assert_eq!(picture(0, 1), current);
@@ -1005,7 +1002,7 @@ mod tests {
         assert_eq!(picture(2, 0).look, TrayLook::Windows);
         assert_eq!(picture(2, 1), current);
         assert_eq!(card.groups.iter().map(|g| g.selected).collect::<Vec<_>>(), [1, 0, 1]);
-        assert_eq!(app.settings().general.tray_icon_look, TrayIconLook::BetterVolume);
+        assert_eq!(app.settings().general.tray_icon_look, TrayIconLook::Colourful);
     }
 
     #[test]
@@ -1028,14 +1025,14 @@ mod tests {
         assert_eq!(app.settings().general.tray_icon_size, TrayIconSize::Large);
         assert!(app.tray_icon().large, "applied at once (FR-083)");
         app.settings_action(SettingsAction::Choose(Setting::TrayLook.key(), 1));
-        assert_eq!(app.settings().general.tray_icon_look, TrayIconLook::BetterVolume);
+        assert_eq!(app.settings().general.tray_icon_look, TrayIconLook::Colourful);
         assert_eq!(
             app.tray_icon().look,
-            bv_ui_kit::controls::tray::TrayLook::BetterVolume,
+            bv_ui_kit::controls::tray::TrayLook::Colourful,
             "applied at once (FR-084)"
         );
         app.settings_action(SettingsAction::Choose(Setting::TrayLook.key(), 2));
-        assert_eq!(app.settings().general.tray_icon_look, TrayIconLook::BetterVolume);
+        assert_eq!(app.settings().general.tray_icon_look, TrayIconLook::Colourful);
         app.settings_action(SettingsAction::Toggle(Setting::Microphones.key(), false));
         assert!(!app.settings().general.microphone_enabled);
         assert!(app.flyout_content().tabs.is_none(), "the flyout loses its tabs (FR-076)");

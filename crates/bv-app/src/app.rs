@@ -208,7 +208,7 @@ impl<E: AudioEngine> App<E> {
         let large = size == TrayIconSize::Large;
         let look = match look {
             TrayIconLook::Windows => TrayLook::Windows,
-            TrayIconLook::BetterVolume => TrayLook::BetterVolume,
+            TrayIconLook::Colourful => TrayLook::Colourful,
         };
         let Some(current) = self.engine.default_device(Flow::Output, Role::Media) else {
             return TrayIcon { level: None, badge: None, large, look };
@@ -592,9 +592,9 @@ mod tests {
         // Same device, default style: no badge.
         let mut app = english(app.engine);
         assert_eq!(app.tray_icon().badge, None);
-        // The BetterVolume look (FR-084).
-        app.settings.general.tray_icon_look = TrayIconLook::BetterVolume;
-        assert_eq!(app.tray_icon().look, TrayLook::BetterVolume);
+        // The colourful look (FR-084).
+        app.settings.general.tray_icon_look = TrayIconLook::Colourful;
+        assert_eq!(app.tray_icon().look, TrayLook::Colourful);
     }
 
     #[test]

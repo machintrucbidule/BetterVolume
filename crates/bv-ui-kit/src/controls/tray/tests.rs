@@ -7,7 +7,7 @@ use crate::ThemeInputs;
 const SIZES: [u32; 9] = [16, 20, 24, 28, 32, 36, 40, 48, 64];
 const DEVICES: [DeviceType; 4] =
     [DeviceType::Speakers, DeviceType::Headphones, DeviceType::Headset, DeviceType::Display];
-const LOOKS: [TrayLook; 2] = [TrayLook::Windows, TrayLook::BetterVolume];
+const LOOKS: [TrayLook; 2] = [TrayLook::Windows, TrayLook::Colourful];
 const LEVELS: [VolumeLevel; 5] = [
     VolumeLevel::Zero,
     VolumeLevel::Low,
@@ -48,7 +48,7 @@ fn device_only(c: &mut Canvas<'_>, device: DeviceType, look: TrayLook, colors: &
     let ink = Ink { colors, look, dim: false };
     let w = match look {
         TrayLook::Windows => SPEAKER_RIGHT,
-        TrayLook::BetterVolume => Waves::DEVICE.room(),
+        TrayLook::Colourful => Waves::DEVICE.room(),
     };
     ink.paint(c, TOP, BOTTOM, |c, color| device_drawing(c, device, w, color));
 }
@@ -57,8 +57,8 @@ fn device_only(c: &mut Canvas<'_>, device: DeviceType, look: TrayLook, colors: &
 fn cut(look: TrayLook, badge: Option<DeviceType>) -> f32 {
     match (look, badge) {
         (TrayLook::Windows, _) => LEVEL_START,
-        (TrayLook::BetterVolume, None) => Waves::SPEAKER.left() - waves::PICTURE_GAP / 2.0,
-        (TrayLook::BetterVolume, Some(_)) => Waves::DEVICE.left() - waves::PICTURE_GAP / 2.0,
+        (TrayLook::Colourful, None) => Waves::SPEAKER.left() - waves::PICTURE_GAP / 2.0,
+        (TrayLook::Colourful, Some(_)) => Waves::DEVICE.left() - waves::PICTURE_GAP / 2.0,
     }
 }
 
@@ -150,7 +150,7 @@ fn our_waves_stay_distinct_at_the_real_size() {
                 [(None, Waves::SPEAKER), (Some(DeviceType::Headphones), Waves::DEVICE)]
             {
                 for large in [false, true] {
-                    let i = icon(Some(VolumeLevel::High), badge, large, TrayLook::BetterVolume);
+                    let i = icon(Some(VolumeLevel::High), badge, large, TrayLook::Colourful);
                     let img = render(&gfx, px, |c| paint(c, &i, &theme));
                     let y = px / 2;
                     let from = first_column_right_of(waves.left() - 0.3, px);
@@ -208,7 +208,7 @@ fn the_bettervolume_device_takes_more_than_half_the_width() {
         for device in [DeviceType::Headphones, DeviceType::Display] {
             let ours = render(&gfx, px, |c| {
                 c.clear(Color::TRANSPARENT);
-                device_only(c, device, TrayLook::BetterVolume, &theme.tray);
+                device_only(c, device, TrayLook::Colourful, &theme.tray);
             });
             let (x0, x1) = inked_columns(&ours, 0..px, 127).expect("drawn");
             assert!((x1 - x0 + 1) * 2 > px, "{device:?} at {px} px: {} columns", x1 - x0 + 1);
@@ -388,7 +388,7 @@ fn the_bettervolume_look_takes_the_accent_colour() {
                 render(&gfx, 32, |c| {
                     paint(
                         c,
-                        &icon(Some(VolumeLevel::High), badge, false, TrayLook::BetterVolume),
+                        &icon(Some(VolumeLevel::High), badge, false, TrayLook::Colourful),
                         theme,
                     )
                 })
@@ -428,7 +428,7 @@ fn the_bettervolume_waves_not_reached_are_a_pale_accent() {
         let theme = Theme::shell(&ThemeInputs { system_mode: mode, ..ThemeInputs::default() });
         let px = 64;
         let low = render(&gfx, px, |c| {
-            paint(c, &icon(Some(VolumeLevel::Low), None, false, TrayLook::BetterVolume), &theme)
+            paint(c, &icon(Some(VolumeLevel::Low), None, false, TrayLook::Colourful), &theme)
         });
         // The middle of the outer arc (not reached at a low level), fully covered.
         let w = Waves::SPEAKER;
@@ -447,9 +447,9 @@ fn the_bettervolume_speaker_is_at_least_as_large_as_the_windows_one() {
                 paint(c, &icon(Some(VolumeLevel::Zero), None, large, look), &theme)
             })
         };
-        let (windows, ours) = (draw(TrayLook::Windows), draw(TrayLook::BetterVolume));
+        let (windows, ours) = (draw(TrayLook::Windows), draw(TrayLook::Colourful));
         let w_split = first_column_right_of(LEVEL_START, px);
-        let o_split = first_column_right_of(cut(TrayLook::BetterVolume, None), px);
+        let o_split = first_column_right_of(cut(TrayLook::Colourful, None), px);
         let wc = inked_columns(&windows, 0..w_split, 127).expect("Windows speaker");
         let oc = inked_columns(&ours, 0..o_split, 127).expect("our speaker");
         let wr = inked_rows(&windows, 0..w_split, 127).expect("Windows speaker");
@@ -481,11 +481,7 @@ fn high_contrast_draws_the_bettervolume_look_as_windows() {
             let draw = |look| {
                 render(&gfx, 32, |c| paint(c, &icon(Some(level), badge, true, look), &theme))
             };
-            assert_eq!(
-                draw(TrayLook::BetterVolume),
-                draw(TrayLook::Windows),
-                "{badge:?} {level:?}"
-            );
+            assert_eq!(draw(TrayLook::Colourful), draw(TrayLook::Windows), "{badge:?} {level:?}");
         }
     }
 }
@@ -578,7 +574,7 @@ fn check_large(
     let colour = match (normal.level, normal.look) {
         (None, _) => theme.tray.glyph.a * 0.6,
         (Some(_), TrayLook::Windows) => theme.tray.glyph.a,
-        (Some(_), TrayLook::BetterVolume) => 1.0,
+        (Some(_), TrayLook::Colourful) => 1.0,
     };
     let inked = |img: &Pixels, x: u32, y: u32| f32::from(img.pixel(x, y)[3]) > 0.5 * colour * 255.0;
     let span = |img: &Pixels, columns: bool| {

@@ -24,7 +24,7 @@ Wording: **must** = required for v1.
   speaker part of the icon is replaced by a drawing of the type of the current output,
   in its natural proportions, the waves still showing the level. In the Windows look
   (FR-084) the Windows icon is kept and only its speaker is replaced, at a similar size;
-  in the BetterVolume look the device takes more than half of the icon's width.
+  in the colourful look the device takes more than half of the icon's width.
 - **FR-012** Tooltip: current output display name and volume, or "muted", with each
   language's typography: `Speakers: 40%` / `Haut-parleurs : 40 %`.
   A name too long for the tooltip is shortened with an ellipsis; the volume always stays
@@ -213,8 +213,9 @@ and notifications" (FR-082, FR-077).
   its middle until the loudest step
   fills the square (DESIGN_SYSTEM §3), strokes and widths unchanged, nothing cut.
 - **FR-084** Tray icon look: "Windows" (default, the Windows volume icon in the
-  taskbar's text colour) or "BetterVolume": the speaker of the application icon (without
-  its two roads) and its own volume waves, distinct at the real size, in a contrasted
+  taskbar's text colour) or "Colourful" (called "BetterVolume" up to 2.1.5): a filled
+  speaker (the speaker of an earlier application icon, without its two roads) and its
+  own volume waves, distinct at the real size, in a contrasted
   gradient of the Windows accent colour, following accent changes at once; the devices
   of FR-011 in that gradient. In high contrast the icon keeps the Windows look. A choice
   already saved is kept.

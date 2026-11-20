@@ -87,8 +87,9 @@ pub enum TrayIconLook {
     /// The Windows volume icon, in the taskbar's text colour.
     #[default]
     Windows,
-    /// The speaker of the application icon, in the Windows accent colour.
-    BetterVolume,
+    /// Our colourful look: the speaker drawn by BetterVolume and its own waves, in the Windows
+    /// accent colour.
+    Colourful,
 }
 
 /// Tray icon size (FR-083).

@@ -627,7 +627,7 @@ fn settings_scene(out: &mut Output, mode: ThemeMode) -> String {
     // The tray icon choices as the tray image shows them last.
     app.settings.general.tray_icon_style = TrayIconStyle::WithDeviceBadge;
     app.settings.general.tray_icon_size = TrayIconSize::Large;
-    app.settings.general.tray_icon_look = TrayIconLook::BetterVolume;
+    app.settings.general.tray_icon_look = TrayIconLook::Colourful;
     app.settings_opening(false);
     app.settings_action(bv_ui_kit::controls::settings::SettingsAction::SelectPage(
         Page::General.key(),
@@ -682,7 +682,7 @@ fn tray_scenes(out: &mut Output, mode: ThemeMode) -> Vec<String> {
         ("hs", "hs", TrayIconStyle::WithDeviceBadge),
         ("tv", "tv", TrayIconStyle::WithDeviceBadge),
     ];
-    [("windows", TrayIconLook::Windows), ("bettervolume", TrayIconLook::BetterVolume)]
+    [("windows", TrayIconLook::Windows), ("bettervolume", TrayIconLook::Colourful)]
         .into_iter()
         .flat_map(|look| pictures.map(|picture| (look, picture)))
         .map(|((look_name, look), (name, id, picture))| {

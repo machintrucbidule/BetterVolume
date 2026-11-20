@@ -97,8 +97,10 @@ const TRAY_STYLES: [(TrayIconStyle, &str); 2] = [
 const TRAY_SIZES: [(TrayIconSize, &str); 2] =
     [(TrayIconSize::SameAsWindows, "same-as-windows"), (TrayIconSize::Large, "large")];
 
+// The colourful look keeps the tag of its first name ("BetterVolume"), so that settings
+// files written by earlier versions read the same.
 const TRAY_LOOKS: [(TrayIconLook, &str); 2] =
-    [(TrayIconLook::Windows, "windows"), (TrayIconLook::BetterVolume, "bettervolume")];
+    [(TrayIconLook::Windows, "windows"), (TrayIconLook::Colourful, "bettervolume")];
 
 const FLYOUT_HEIGHTS: [(FlyoutHeight, &str); 2] =
     [(FlyoutHeight::Full, "full"), (FlyoutHeight::Content, "content")];
@@ -707,7 +709,7 @@ mod tests {
         settings.general.volume_bubble = false;
         settings.general.tray_icon_style = TrayIconStyle::WithDeviceBadge;
         settings.general.tray_icon_size = TrayIconSize::Large;
-        settings.general.tray_icon_look = TrayIconLook::BetterVolume;
+        settings.general.tray_icon_look = TrayIconLook::Colourful;
         settings.general.flyout_height = FlyoutHeight::Full;
         settings.general.apps_section_expanded = false;
         settings.general.first_run_done = true;
@@ -914,6 +916,20 @@ switch_notification = false
         assert!(!loaded.settings.general.switch_notification);
         assert!(loaded.settings.general.volume_bubble);
         assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+    }
+
+    #[test]
+    fn the_colourful_look_keeps_the_tag_of_its_first_name() {
+        // A file written before the look was renamed reads the same, and is written back
+        // with the same tag (FR-084).
+        let text = "version = 1
+[general]
+tray_icon_look = \"bettervolume\"
+";
+        let loaded = read(text).expect("readable");
+        assert_eq!(loaded.settings.general.tray_icon_look, TrayIconLook::Colourful);
+        assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+        assert!(write(&loaded.settings).contains("tray_icon_look = \"bettervolume\""));
     }
 
     #[test]

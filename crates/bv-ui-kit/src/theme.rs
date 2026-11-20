@@ -175,14 +175,14 @@ pub struct TrayColors {
     pub glyph: Color,
     /// The Windows look: waves not reached (the Windows 11 "disabled text" colour).
     pub unreached: Color,
-    /// The BetterVolume look: its gradient, top to bottom, made of accent shades (lighter
+    /// The colourful look: its gradient, top to bottom, made of accent shades (lighter
     /// on a dark taskbar).
     pub accent: [Color; 2],
-    /// The BetterVolume look: waves not reached, a pale accent.
+    /// The colourful look: waves not reached, a pale accent.
     pub accent_unreached: Color,
     /// The taskbar behind the icon (pictures of the icon in the settings window).
     pub taskbar: Color,
-    /// A high-contrast theme is active: only system colours, so the BetterVolume look
+    /// A high-contrast theme is active: only system colours, so the colourful look
     /// is drawn in the Windows look.
     pub high_contrast: bool,
 }

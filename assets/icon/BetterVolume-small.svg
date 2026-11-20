@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
 <defs>
-<linearGradient id="spk" x1="3" y1="10" x2="20" y2="38" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#4FB3FF"/><stop offset="1" stop-color="#0F6CD6"/></linearGradient>
+<linearGradient id="g" x1="8" y1="4" x2="34" y2="46" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6CC8FF"/><stop offset="1" stop-color="#1279E0"/></linearGradient>
+<linearGradient id="gd" x1="4" y1="4" x2="20" y2="44" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2E8FEA"/><stop offset="1" stop-color="#0A4FAE"/></linearGradient>
 </defs>
-<!-- Simplified for 16 to 32 px: no shadow, thicker roads, larger ends. -->
-<path fill="url(#spk)" d="M2 18.4A2.4 2.4 0 0 1 4.4 16H8.8L16.3 9.6C17.7 8.4 19.8 9.4 19.8 11.2V36.8C19.8 38.6 17.7 39.6 16.3 38.4L8.8 32H4.4A2.4 2.4 0 0 1 2 29.6Z"/>
-<path fill="none" stroke="#B4C6DC" stroke-width="5" stroke-linecap="round" d="M23.5 24C30 24 31 37 38 37"/>
-<circle cx="41.5" cy="37" r="4.5" fill="#B4C6DC"/>
-<path fill="none" stroke="#1C84E8" stroke-width="5" stroke-linecap="round" d="M23.5 24C30 24 31 11 38 11"/>
-<circle cx="41.5" cy="11" r="5" fill="#1C84E8"/>
+<!-- The same drawing for 16 to 32 px, without the shadow (it only blurs the edges there). -->
+<g transform="translate(2.25 0)">
+<path fill="url(#g)" fill-rule="evenodd" d="M5 16.5H10.6L24 4.5H35.5L38.5 7.5V20L36 24L38.5 28V40.5L35.5 43.5H24L10.6 31.5H5ZM17.44 20.58L26.91 12.1H29.9L30.9 13.1V18.58L28.9 20.58ZM17.44 27.42H28.9L30.9 29.42V34.9L29.9 35.9H26.91Z"/>
+<path fill="url(#gd)" d="M5 16.5H10.6L24 4.5H35.39L17.44 20.58H5ZM5 31.5H10.6L24 43.5H35.39L17.44 27.42H5Z"/>
+</g>
 </svg>

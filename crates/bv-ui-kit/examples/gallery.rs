@@ -61,8 +61,8 @@ fn tray_icons(gfx: &Graphics, out: &Path) {
                 [
                     (false, TrayLook::Windows),
                     (true, TrayLook::Windows),
-                    (false, TrayLook::BetterVolume),
-                    (true, TrayLook::BetterVolume),
+                    (false, TrayLook::Colourful),
+                    (true, TrayLook::Colourful),
                 ]
                 .map(|(large, look)| (pixels, large, look))
             })
@@ -87,7 +87,7 @@ fn tray_icons(gfx: &Graphics, out: &Path) {
                 blend(&mut sheet, &icon, i as u32 * cell + pixels / 4, pixels / 4);
             }
             let size = if large { "-large" } else { "" };
-            let look = if look == TrayLook::BetterVolume { "-bv" } else { "" };
+            let look = if look == TrayLook::Colourful { "-bv" } else { "" };
             write_png(&out.join(format!("tray-{name}-{pixels}px{size}{look}.png")), &sheet);
         }
     }
@@ -278,7 +278,7 @@ fn badges(gfx: &Graphics, out: &Path) {
     let columns = [(false, false), (true, false), (false, true), (true, true)]
         .into_iter()
         .flat_map(|(badge, large)| {
-            [TrayLook::Windows, TrayLook::BetterVolume].map(|look| (badge, large, look))
+            [TrayLook::Windows, TrayLook::Colourful].map(|look| (badge, large, look))
         })
         .collect::<Vec<_>>();
     for (mode, name, background) in [

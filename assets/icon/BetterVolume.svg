@@ -1,17 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
 <defs>
-<linearGradient id="spk" x1="3" y1="10" x2="20" y2="38" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6CC8FF"/><stop offset="1" stop-color="#1279E0"/></linearGradient>
-<linearGradient id="on" x1="22" y1="24" x2="45" y2="9" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2B8AE8"/><stop offset="1" stop-color="#5CC1FF"/></linearGradient>
+<linearGradient id="g" x1="8" y1="4" x2="34" y2="46" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6CC8FF"/><stop offset="1" stop-color="#1279E0"/></linearGradient>
+<linearGradient id="gd" x1="4" y1="4" x2="20" y2="44" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2E8FEA"/><stop offset="1" stop-color="#0A4FAE"/></linearGradient>
 <filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="1.2" stdDeviation="1.2" flood-color="#002050" flood-opacity="0.28"/></filter>
 </defs>
-<!-- The Windows speaker, whose sound takes one of two roads (the chosen one in blue). -->
+<!-- A speaker drawn as a "B": the short stem is the speaker's body, the top and bottom
+     strokes spread into the cone (folded, darker), the two bowls form the mouth. -->
+<g transform="translate(2.25 0)">
 <g filter="url(#s)">
-<path fill="url(#spk)" d="M2.5 18.6A2.1 2.1 0 0 1 4.6 16.5H8.9L16.4 10.2C17.7 9.1 19.6 10 19.6 11.7V36.3C19.6 38 17.7 38.9 16.4 37.8L8.9 31.5H4.6A2.1 2.1 0 0 1 2.5 29.4Z"/>
+<path fill="url(#g)" fill-rule="evenodd" d="M5 16.5H10.6L24 4.5H35.5L38.5 7.5V20L36 24L38.5 28V40.5L35.5 43.5H24L10.6 31.5H5ZM17.44 20.58L26.91 12.1H29.9L30.9 13.1V18.58L28.9 20.58ZM17.44 27.42H28.9L30.9 29.42V34.9L29.9 35.9H26.91Z"/>
 </g>
-<path fill="none" stroke="#C3D3E6" stroke-width="3.2" stroke-linecap="round" d="M23 24C30 24 31.5 36 38.5 36"/>
-<circle cx="41.8" cy="36" r="3.3" fill="#C3D3E6"/>
-<g filter="url(#s)">
-<path fill="none" stroke="url(#on)" stroke-width="3.2" stroke-linecap="round" d="M23 24C30 24 31.5 12 38.5 12"/>
-<circle cx="41.8" cy="12" r="3.8" fill="url(#on)"/>
+<path fill="url(#gd)" d="M5 16.5H10.6L24 4.5H35.39L17.44 20.58H5ZM5 31.5H10.6L24 43.5H35.39L17.44 27.42H5Z"/>
 </g>
 </svg>

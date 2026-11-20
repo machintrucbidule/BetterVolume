@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icon/BetterVolume.svg" alt="BetterVolume icon: the Windows speaker whose sound takes one of two roads" width="112">
+  <img src="assets/icon/BetterVolume.svg" alt="BetterVolume icon: a speaker drawn as a B, its stem the body, its strokes spreading into the cone" width="112">
 </p>
 
 # BetterVolume
@@ -31,7 +31,7 @@ Home Assistant.
   settings. Three choices, each shown as a picture of the result in the settings: its
   size (normal, or large to take the same room as the icons next to it), its picture
   (the speaker, or the device playing now: speakers, headphones, headset, TV) and its
-  style (identical to Windows, or the BetterVolume style in your Windows accent colour).
+  style (identical to Windows, or a colourful style in your Windows accent colour).
 - **Looks like Windows 11.** The panel, the settings window and the small bubble shown
   when the device changes follow the Windows 11 design, light or dark theme and accent
   colour, and work with the keyboard and screen readers.
@@ -60,7 +60,7 @@ Home Assistant.
 </p>
 
 <p align="center">
-  <img src="docs/images/tray.png" alt="BetterVolume's tray icon at the large size, on a dark and a light taskbar. Top row, the Windows style: the speaker, then the current output in its place (bookshelf speakers, a headset, a TV). Bottom row, the same in the BetterVolume style, in the blue of the Windows accent colour" width="504">
+  <img src="docs/images/tray.png" alt="BetterVolume's tray icon at the large size, on a dark and a light taskbar. Top row, the Windows style: the speaker, then the current output in its place (bookshelf speakers, a headset, a TV). Bottom row, the same in the colourful style, in the blue of the Windows accent colour" width="504">
 </p>
 
 <p align="center">

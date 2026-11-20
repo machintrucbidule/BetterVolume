@@ -2,11 +2,11 @@
 //!
 //! Three independent choices. Picture: the speaker, or the device now playing (its type
 //! drawn in place of the speaker). Look: Windows (the Windows volume glyph, one colour;
-//! with a device, only its speaker is replaced) or BetterVolume (the speaker of the
-//! application icon and our own waves, in a gradient of the accent colour; with a device,
-//! a larger device left of the waves). Size: the Windows one, or large (stretched to the
-//! height of the icon). The waves (or the mute cross) always show the level, and every
-//! drawing keeps its natural proportions.
+//! with a device, only its speaker is replaced) or colourful (our own filled speaker,
+//! drawn after an earlier application icon, and our own waves, in a gradient of the
+//! accent colour; with a device, a larger device left of the waves). Size: the Windows
+//! one, or large (stretched to the height of the icon). The waves (or the mute cross)
+//! always show the level, and every drawing keeps its natural proportions.
 
 use crate::backend::{Canvas, Gradient};
 use crate::icons::VolumeLevel;
@@ -36,7 +36,7 @@ pub const LARGE_STRETCH: f32 = 20.0 / 17.0;
 /// centre of the speaker, the devices and the waves.
 const MIDDLE: f32 = LOGICAL_SIZE / 2.0;
 
-/// Our waves (BetterVolume look): three arcs about a centre on the middle line, against
+/// Our waves (colourful look): three arcs about a centre on the middle line, against
 /// the icon's right edge. Their stroke is the Windows one; they are farther apart than a
 /// mere scaled-down Windows glyph would leave them, so that they stay distinct at the real
 /// size (they merged into one stroke at 1.4 pixels apart).
@@ -113,8 +113,8 @@ pub enum TrayLook {
     /// The Windows volume glyph, in the taskbar's text colour.
     #[default]
     Windows,
-    /// The speaker of the application icon and our waves in the accent gradient.
-    BetterVolume,
+    /// The colourful look: our speaker and our waves in the accent gradient.
+    Colourful,
 }
 
 /// What the tray icon shows.
@@ -187,7 +187,7 @@ impl Ink<'_> {
         to: Point,
         draw: impl FnOnce(&mut Canvas<'_>, Color),
     ) {
-        if self.look == TrayLook::BetterVolume && !self.dim {
+        if self.look == TrayLook::Colourful && !self.dim {
             let gradient = Gradient { from, to, colors: self.colors.accent };
             canvas.with_gradient(&gradient, |c| draw(c, Color::WHITE));
         } else {
@@ -226,13 +226,13 @@ fn paint_icon(canvas: &mut Canvas<'_>, icon: &TrayIcon, colors: &TrayColors) {
                 device_drawing(c, device, SPEAKER_RIGHT, color)
             });
         }
-        (TrayLook::BetterVolume, None) => {
+        (TrayLook::Colourful, None) => {
             let waves = Waves::SPEAKER;
             our_level(canvas, waves, level, &ink);
             let speaker = app_speaker(waves.room().min(SPEAKER_WIDTH));
             ink.paint(canvas, TOP, BOTTOM, |c, color| c.fill_path(&speaker, color));
         }
-        (TrayLook::BetterVolume, Some(device)) => {
+        (TrayLook::Colourful, Some(device)) => {
             let waves = Waves::DEVICE;
             our_level(canvas, waves, level, &ink);
             let w = waves.room();
@@ -246,7 +246,7 @@ const TOP: Point = Point::new(0.0, 2.0);
 /// See [`TOP`].
 const BOTTOM: Point = Point::new(0.0, 14.0);
 
-/// Width of the application speaker in the BetterVolume look (a little wider than the
+/// Width of our speaker in the colourful look (a little wider than the
 /// Windows speaker, which its filled shape replaces).
 const SPEAKER_WIDTH: f32 = 7.6;
 
@@ -268,7 +268,7 @@ fn windows_level(canvas: &mut Canvas<'_>, level: VolumeLevel, ink: &Ink<'_>) {
     canvas.clipped(part, |c| glyph(c, reached, ink.plain()));
 }
 
-/// Our waves for `level` (BetterVolume look): as many arcs reached as the Windows glyph
+/// Our waves for `level` (colourful look): as many arcs reached as the Windows glyph
 /// has waves (none at 0, one when low, two at medium, three when high), the others in a
 /// pale accent; a cross when muted (or without a device).
 fn our_level(canvas: &mut Canvas<'_>, w: Waves, level: VolumeLevel, ink: &Ink<'_>) {
@@ -298,8 +298,8 @@ fn our_level(canvas: &mut Canvas<'_>, w: Waves, level: VolumeLevel, ink: &Ink<'_
     }
 }
 
-/// The speaker of the application icon (its small drawing, `BetterVolume-small.svg`,
-/// without the two roads), `width` wide from the left edge, centred on the middle line.
+/// Our filled speaker (drawn after the small drawing of an earlier application icon,
+/// without its two roads), `width` wide from the left edge, centred on the middle line.
 fn app_speaker(width: f32) -> Path {
     // The drawing spans x 2 to 19.8 and is centred on y 24 in its 48-unit square.
     let s = width / 17.8;
