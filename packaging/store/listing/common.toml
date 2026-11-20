@@ -13,9 +13,9 @@ website_url = "https://github.com/machintrucbidule/BetterVolume"
 support_contact = "https://github.com/machintrucbidule/BetterVolume/issues"
 
 # Why the package declares the restricted capability runFullTrust (Partner Center asks
-# for it in the submission's "Submission options").
+# for it in the submission's "Submission options"; its box takes 500 characters).
 run_full_trust = """
-BetterVolume is a classic Windows desktop application packaged for the Store (it is not a UWP app). It needs full trust because it shows its own icon in the notification area next to the clock, reads and changes the audio devices and volumes through the Windows Core Audio interfaces, starts with Windows through the package's startup task, and, only when the user turns the option on, hides the Windows volume icon of the taskbar by loading a small helper of the package into Explorer. It sends nothing about the user; its only network connection is the optional MQTT link to the user's own Home Assistant server.
+BetterVolume is a classic Win32 desktop app packaged for the Store. Full trust lets it show its icon in the notification area, read and change audio devices and volumes through Windows Core Audio, start with Windows via the package's startup task and, only if the user enables it, hide the taskbar's volume icon by loading a helper of the package into Explorer. It sends no user data; its only network use is an optional MQTT link to the user's own Home Assistant.
 """
 
 # Notes for certification (Partner Center, "Submission options").

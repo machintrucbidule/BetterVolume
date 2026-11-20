@@ -48,6 +48,8 @@ LIMITS = {
     "caption": 200,
     "trailer_title": 255,
     "copyright": 200,
+    # Partner Center's box for the runFullTrust justification ("Submission options").
+    "run_full_trust": 500,
 }
 # Shown in full only up to this length in some Store views.
 SHORT_DESCRIPTION_SHOWN = 270
@@ -93,6 +95,10 @@ def check(images=None):
     shared = common()
     if len(shared.get("copyright", "")) > LIMITS["copyright"]:
         problems.append("common: copyright too long")
+    justification = shared.get("run_full_trust", "").strip()
+    if len(justification) > LIMITS["run_full_trust"]:
+        problems.append(f"common: runFullTrust justification has {len(justification)} characters "
+                        f"(limit {LIMITS['run_full_trust']})")
     for language in languages():
         text = load(language)
         where = language
