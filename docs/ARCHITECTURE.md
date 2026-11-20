@@ -484,7 +484,9 @@ desktop application; startup task "BetterVolume", on at the first start) and the
 `packaging\store\Assets` (rendered from the icon drawings by `tools\store-assets.ps1`,
 indexed in `resources.pri` by `makepri`) into `target\package\BetterVolume-<version>.msix`,
 then unpacks it and checks it. Unsigned: the Store signs it. The release workflow keeps it
-with the run.
+with the run. The manifest's `BackgroundColor` is white: where Windows draws the icon on
+a square (the plated images, for example in Settings' Startup apps page), a transparent
+colour would make that square the accent colour and hide the blue icon.
 
 At run time `bv_shell::package_family()` (`GetCurrentPackageFamilyName`, read once) tells
 the Store version. A packaged process's writes under `%LOCALAPPDATA%` and

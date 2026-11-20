@@ -854,10 +854,13 @@ impl Video<'_> {
     }
 }
 
-/// The video: the README demo (open, switch the output, lower an application, fold the
-/// applications, dark to light), then the settings: the tray icon's picture and style
-/// changed with the icon next to the clock following, a device's icon changed on the
-/// Devices page, the Home Assistant page, and the panel showing the new device icon.
+/// The video, in the dark theme: the README demo (open, switch the output, lower an
+/// application, fold the applications), then the settings: the tray icon's picture and
+/// style changed with the icon next to the clock following (the dark taskbar shows the
+/// colourful style in its bright shades), the headset given the TV icon on the Devices
+/// page (another of the tray icon's four device drawings, so the change shows next to
+/// the clock too), the Home Assistant page, the panel showing the new icon; then dark to
+/// light and the panel closes.
 fn video(out: &mut Output) -> String {
     let language = Language::ENGLISH;
     let sample = sample(language);
@@ -925,9 +928,6 @@ fn video(out: &mut Output) -> String {
     v.hold(160);
     v.click();
     v.hold(700);
-    // Dark to light.
-    v.fade_to_light(320);
-    v.hold(900);
     // Open the settings from the panel's button.
     let gear = v.panel_element(AccessRole::Button, Language::ENGLISH.text(Msg::MenuSettings));
     v.point(gear, 640);
@@ -976,8 +976,7 @@ fn video(out: &mut Output) -> String {
     v.hold(200);
     v.click();
     v.hold(800);
-    let choice = v
-        .window_element(AccessRole::ListItem, Language::ENGLISH.text(Msg::IconBluetoothHeadphones));
+    let choice = v.window_element(AccessRole::ListItem, Language::ENGLISH.text(Msg::IconTv));
     v.point(choice, 700);
     v.hold(300);
     v.click();
@@ -998,7 +997,18 @@ fn video(out: &mut Output) -> String {
     v.hold(400);
     let tile = v.panel_element(AccessRole::ListItem, headset);
     v.point(Point::new(tile.x - 40.0, tile.y + 30.0), 600);
-    v.hold(2200);
+    v.hold(1800);
+    // Dark to light, then the panel closes from the icon.
+    v.fade_to_light(320);
+    v.hold(1400);
+    v.point(icon, 700);
+    v.hover = true;
+    v.hold(200);
+    v.click();
+    v.close_panel();
+    v.hover = false;
+    v.point(rest, 700);
+    v.hold(1200);
     frames_json(&v.frames)
 }
 
