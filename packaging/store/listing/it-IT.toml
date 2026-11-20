@@ -1,0 +1,55 @@
+# Microsoft Store listing, Italian (Italy). See en-US.toml for the limits.
+
+short_description = "Passa dagli altoparlanti alle cuffie o alla TV con un clic e regola il volume di ogni app, in un pannello che ha l'aspetto e i movimenti di Windows 11. Leggero, gratuito, open source, con collegamento facoltativo a Home Assistant."
+
+description = """
+Il pannello del volume che Windows 11 avrebbe dovuto avere.
+
+Fai clic sull'icona di BetterVolume accanto all'orologio: si apre un pannello nello stile di Windows 11, con un grande riquadro per ogni dispositivo di output. Basta un clic per portare l'audio sugli altoparlanti, sulle cuffie o sulla TV. Subito sotto, regola il volume di ogni app che riproduce audio, il volume generale e il microfono.
+
+BetterVolume ha l'aspetto e i movimenti di Windows 11: tema chiaro o scuro, il tuo colore principale, le stesse animazioni, e si usa con la tastiera e con le utilità per la lettura dello schermo. Richiede solo pochi megabyte di memoria e praticamente nessun tempo del processore mentre attende.
+
+Rendilo tuo: rinomina i dispositivi, mettili nell'ordine che preferisci, assegna a ciascuno la sua icona tra 27 disegni e nascondi quelli che non usi mai. Scegli la posizione di ogni app nel pannello, oppure nascondila. L'icona accanto all'orologio mostra il livello del volume e, se vuoi, il dispositivo in riproduzione, nello stile di Windows o in uno stile colorato nel tuo colore principale. La rotellina del mouse sopra l'icona cambia il volume, un clic con il pulsante centrale disattiva l'audio. BetterVolume può anche nascondere l'icona del volume di Windows, in modo che ne resti una sola.
+
+Home Assistant (facoltativo): collega BetterVolume al tuo server Home Assistant tramite MQTT e ogni PC vi compare come un dispositivo con output audio, volume, disattivazione audio, microfono e pulsanti multimediali, aggiornati in tempo reale in entrambe le direzioni. Le tue automazioni possono portare l'audio sulla TV quando si accende, abbassare il volume quando suonano alla porta o mettere in pausa la musica quando esci. Prima di disinstallare BetterVolume, disattiva il collegamento a Home Assistant nelle sue impostazioni: così il PC viene rimosso da Home Assistant.
+
+BetterVolume è gratuito, open source e non invia nulla su di te: la sua unica connessione di rete è il collegamento facoltativo al tuo server Home Assistant. È disponibile in italiano, inglese, francese, tedesco, spagnolo, portoghese (Brasile), olandese, polacco, giapponese e cinese semplificato, e segue la lingua di visualizzazione di Windows.
+
+Usi già BetterVolume scaricato dalla pagina del progetto? Al primo avvio la versione dello Store riprende le tue impostazioni; poi puoi disinstallare l'altra copia.
+"""
+
+features = [
+    "Cambia il dispositivo di output con un clic: per i contenuti multimediali, per le chiamate o per entrambi",
+    "Volume di ogni app che riproduce audio, volume generale e disattivazione audio",
+    "Vista del microfono: dispositivo di input, livello e disattivazione",
+    "Design di Windows 11: temi chiaro e scuro, colore principale, le stesse animazioni",
+    "Utilizzabile con la tastiera e con le utilità per la lettura dello schermo",
+    "Rinomina, riordina e nascondi i dispositivi, e scegli la loro icona tra 27 disegni",
+    "Scegli l'ordine delle app nel pannello, oppure nascondile",
+    "Icona accanto all'orologio con il livello del volume o il dispositivo in riproduzione; rotellina e clic centrale",
+    "Può nascondere l'icona del volume di Windows",
+    "Collegamento facoltativo a Home Assistant tramite MQTT: output, volume, disattivazione, microfono e pulsanti multimediali di ogni PC",
+    "Pochi megabyte di memoria, nessun tempo del processore mentre attende",
+    "Dieci lingue, secondo la lingua di visualizzazione di Windows",
+]
+
+search_terms = [
+    "mixer volume",
+    "cambiare output audio",
+    "dispositivo audio",
+    "controllo volume",
+    "Home Assistant",
+    "volume per app",
+    "altoparlanti cuffie",
+]
+
+captions = [
+    "Cambia l'output con un clic e regola il volume di ogni app",
+    "La vista del microfono: dispositivo di input, livello e disattivazione",
+    "Impostazioni nello stile di Windows 11",
+    "I tuoi dispositivi: nomi, ordine e icone tra 27 disegni",
+    "Collegamento facoltativo a Home Assistant: l'audio di ogni PC nella tua domotica",
+    "L'icona accanto all'orologio e il fumetto che appare quando cambia il dispositivo",
+]
+
+trailer_title = "BetterVolume in azione"

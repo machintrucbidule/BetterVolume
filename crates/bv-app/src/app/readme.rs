@@ -38,27 +38,27 @@ use super::settings_window::Page;
 use super::App;
 
 /// Pixels per DIP of every image (crisp on high-density screens, light files).
-const SCALE: f32 = 1.5;
+pub(super) const SCALE: f32 = 1.5;
 /// Scene of the panel images: room for the panel, its gaps and the taskbar corner.
 const SCENE: (f32, f32) = (440.0, 600.0);
 /// Height of the taskbar (Windows 11 at 100 %).
-const TASKBAR: f32 = 48.0;
+pub(super) const TASKBAR: f32 = 48.0;
 /// Gap between the panel and the screen edge and taskbar (Windows 11 flyouts).
-const GAP: f32 = 12.0;
+pub(super) const GAP: f32 = 12.0;
 /// How the pointer moves between two places (gentle start and stop).
-const POINTER: bv_ui_kit::motion::CubicBezier =
+pub(super) const POINTER: bv_ui_kit::motion::CubicBezier =
     bv_ui_kit::motion::CubicBezier { x1: 0.45, y1: 0.0, x2: 0.2, y2: 1.0 };
 /// One animation frame, in milliseconds.
-const FRAME_MS: u32 = 40;
+pub(super) const FRAME_MS: u32 = 40;
 /// Settings window size for its image (the whole General page fits).
 const SETTINGS: (f32, f32) = (980.0, 1170.0);
 /// Application icons, by executable: the icons installed on the PC that draws the images.
-const ICONS: [(&str, &str); 2] = [
+pub(super) const ICONS: [(&str, &str); 2] = [
     ("firefox.exe", r"%ProgramFiles%\Mozilla Firefox\firefox.exe"),
     ("discord.exe", r"%LOCALAPPDATA%\Discord\app.ico"),
 ];
 
-fn device(id: &str, name: &str, form_factor: FormFactor, bus: Bus) -> DeviceInfo {
+pub(super) fn device(id: &str, name: &str, form_factor: FormFactor, bus: Bus) -> DeviceInfo {
     DeviceInfo {
         id: id.into(),
         windows_name: name.into(),
@@ -68,7 +68,7 @@ fn device(id: &str, name: &str, form_factor: FormFactor, bus: Bus) -> DeviceInfo
     }
 }
 
-fn stream(file: &str, name: &str, volume: f32) -> Stream {
+pub(super) fn stream(file: &str, name: &str, volume: f32) -> Stream {
     let path = format!(r"C:\Apps\{file}");
     let icon = ICONS.iter().find(|(f, _)| *f == file).map(|(_, source)| (*source).to_owned());
     Stream {
@@ -83,7 +83,7 @@ fn stream(file: &str, name: &str, volume: f32) -> Stream {
     }
 }
 
-fn known(id: &str, name: &str, icon: DeviceIcon) -> KnownDevice {
+pub(super) fn known(id: &str, name: &str, icon: DeviceIcon) -> KnownDevice {
     KnownDevice {
         custom_name: Some(name.into()),
         icon: Some(icon.id().into()),
@@ -136,11 +136,11 @@ fn app() -> App<FakeEngine> {
     app
 }
 
-fn shell_theme(mode: ThemeMode) -> Theme {
+pub(super) fn shell_theme(mode: ThemeMode) -> Theme {
     Theme::shell(&ThemeInputs { system_mode: mode, ..ThemeInputs::default() })
 }
 
-fn mode_name(mode: ThemeMode) -> &'static str {
+pub(super) fn mode_name(mode: ThemeMode) -> &'static str {
     if mode == ThemeMode::Dark {
         "dark"
     } else {
@@ -149,17 +149,17 @@ fn mode_name(mode: ThemeMode) -> &'static str {
 }
 
 /// Layers already written, by content, and the description being built.
-struct Output {
-    gfx: Graphics,
-    out: PathBuf,
-    layers: HashMap<Vec<u8>, String>,
-    sizes: String,
-    icons: HashMap<String, Option<Rc<Pixels>>>,
+pub(super) struct Output {
+    pub(super) gfx: Graphics,
+    pub(super) out: PathBuf,
+    pub(super) layers: HashMap<Vec<u8>, String>,
+    pub(super) sizes: String,
+    pub(super) icons: HashMap<String, Option<Rc<Pixels>>>,
 }
 
 impl Output {
     /// Writes `image` once (identical images share one file) and returns its name.
-    fn layer(&mut self, prefix: &str, image: &Pixels) -> String {
+    pub(super) fn layer(&mut self, prefix: &str, image: &Pixels) -> String {
         let mut key = image.data.clone();
         key.extend_from_slice(&image.width.to_le_bytes());
         if let Some(name) = self.layers.get(&key) {
@@ -179,7 +179,7 @@ impl Output {
     }
 
     /// The content with the application icons loaded, as the shell does.
-    fn with_icons(&mut self, mut content: FlyoutContent) -> FlyoutContent {
+    pub(super) fn with_icons(&mut self, mut content: FlyoutContent) -> FlyoutContent {
         let pixels = (bv_ui_kit::tokens::volume_row::APP_ICON * SCALE).round() as u32;
         if let Some(apps) = content.apps.as_mut() {
             for row in &mut apps.rows {
@@ -246,14 +246,14 @@ impl Output {
 
 /// The element of an accessibility tree whose role is `role` and whose name contains
 /// `name`.
-fn find(node: &AccessNode, role: AccessRole, name: &str) -> Option<Rect> {
+pub(super) fn find(node: &AccessNode, role: AccessRole, name: &str) -> Option<Rect> {
     if node.role == role && node.name.contains(name) {
         return Some(node.bounds);
     }
     node.children.iter().find_map(|child| find(child, role, name))
 }
 
-fn centre(r: Rect) -> Point {
+pub(super) fn centre(r: Rect) -> Point {
     Point::new(r.x + r.width / 2.0, r.y + r.height / 2.0)
 }
 
@@ -670,7 +670,7 @@ fn settings_scene(out: &mut Output, mode: ThemeMode) -> String {
 }
 
 /// Height of a standard Windows 11 title bar.
-const CAPTION_HEIGHT: f32 = 32.0;
+pub(super) const CAPTION_HEIGHT: f32 = 32.0;
 
 /// The tray icon at the "Large" size in both looks (FR-084): the speaker, then the
 /// picture "device" for each of the three outputs, in a theme (the taskbar with each

@@ -1,0 +1,55 @@
+# Microsoft Store listing, Polish (Poland). See en-US.toml for the limits.
+
+short_description = "Przełączaj dźwięk między głośnikami, słuchawkami i telewizorem jednym kliknięciem i ustawiaj głośność każdej aplikacji w panelu, który wygląda i działa jak Windows 11. Lekki, darmowy, open source, z opcjonalnym połączeniem z Home Assistant."
+
+description = """
+Panel głośności, który powinien mieć Windows 11.
+
+Kliknij ikonę BetterVolume obok zegara: otworzy się panel w stylu Windows 11 z dużym kafelkiem dla każdego urządzenia wyjściowego. Wystarczy jedno kliknięcie, aby przełączyć dźwięk na głośniki, słuchawki lub telewizor. Tuż pod nimi ustawisz głośność każdej aplikacji odtwarzającej dźwięk, głośność główną i mikrofon.
+
+BetterVolume wygląda i porusza się jak Windows 11: jasny lub ciemny motyw, Twój kolor akcentu, te same animacje, a do tego obsługa klawiatury i czytników zawartości ekranu. Potrzebuje zaledwie kilku megabajtów pamięci i praktycznie nie zużywa procesora, gdy czeka.
+
+Dostosuj go do siebie: zmieniaj nazwy urządzeń, ustawiaj je we własnej kolejności, nadaj każdemu ikonę spośród 27 rysunków i ukryj te, których nigdy nie używasz. Wybierz miejsce każdej aplikacji w panelu albo ją ukryj. Ikona obok zegara pokazuje poziom głośności oraz, jeśli chcesz, urządzenie, które właśnie gra, w stylu Windows lub w kolorowym stylu w Twoim kolorze akcentu. Kółko myszy nad nią zmienia głośność, a kliknięcie środkowym przyciskiem wycisza dźwięk. BetterVolume może też ukryć ikonę głośności systemu Windows, tak aby została tylko jedna.
+
+Home Assistant (opcjonalnie): połącz BetterVolume z serwerem Home Assistant przez MQTT, a każdy komputer pojawi się tam jako urządzenie z wyjściem audio, głośnością, wyciszeniem, mikrofonem i przyciskami multimediów, aktualizowanymi na żywo w obu kierunkach. Twoje automatyzacje mogą przełączyć dźwięk na telewizor, gdy się włączy, ściszyć go, gdy ktoś dzwoni do drzwi, albo wstrzymać muzykę, gdy wychodzisz. Przed odinstalowaniem BetterVolume wyłącz połączenie z Home Assistant w jego ustawieniach: komputer zostanie wtedy usunięty z Home Assistant.
+
+BetterVolume jest darmowy, ma otwarty kod źródłowy i nie wysyła żadnych informacji o Tobie: jego jedynym połączeniem sieciowym jest opcjonalne połączenie z Twoim własnym serwerem Home Assistant. Jest dostępny po polsku, angielsku, francusku, niemiecku, hiszpańsku, włosku, portugalsku (Brazylia), niderlandzku, japońsku i w chińskim uproszczonym, a język wybiera zgodnie z językiem wyświetlania systemu Windows.
+
+Używasz już BetterVolume pobranego ze strony projektu? Przy pierwszym uruchomieniu wersja ze Sklepu przejmie Twoje ustawienia; potem możesz odinstalować drugą kopię.
+"""
+
+features = [
+    "Zmiana urządzenia wyjściowego jednym kliknięciem: dla multimediów, połączeń lub obu",
+    "Głośność każdej aplikacji odtwarzającej dźwięk, głośność główna i wyciszenie",
+    "Widok mikrofonu: urządzenie wejściowe, poziom i wyciszenie",
+    "Wygląd Windows 11: jasny i ciemny motyw, kolor akcentu, te same animacje",
+    "Obsługa klawiatury i czytników zawartości ekranu",
+    "Zmiana nazw, kolejności i widoczności urządzeń oraz wybór ich ikony spośród 27 rysunków",
+    "Wybór kolejności aplikacji w panelu lub ich ukrycie",
+    "Ikona obok zegara z poziomem głośności lub urządzeniem, które gra; kółko myszy i środkowy przycisk",
+    "Może ukryć ikonę głośności systemu Windows",
+    "Opcjonalne połączenie z Home Assistant przez MQTT: wyjście, głośność, wyciszenie, mikrofon i przyciski multimediów każdego komputera",
+    "Kilka megabajtów pamięci, zero czasu procesora podczas oczekiwania",
+    "Dziesięć języków, zgodnie z językiem wyświetlania systemu Windows",
+]
+
+search_terms = [
+    "mikser głośności",
+    "przełączanie wyjścia audio",
+    "urządzenie audio",
+    "regulacja głośności",
+    "Home Assistant",
+    "głośność aplikacji",
+    "głośniki słuchawki",
+]
+
+captions = [
+    "Zmień wyjście jednym kliknięciem i ustaw głośność każdej aplikacji",
+    "Widok mikrofonu: urządzenie wejściowe, poziom i wyciszenie",
+    "Ustawienia w stylu Windows 11",
+    "Twoje urządzenia: ich nazwy, kolejność i ikony spośród 27 rysunków",
+    "Opcjonalne połączenie z Home Assistant: dźwięk każdego komputera w Twoim inteligentnym domu",
+    "Ikona obok zegara i dymek wyświetlany przy zmianie urządzenia",
+]
+
+trailer_title = "BetterVolume w działaniu"

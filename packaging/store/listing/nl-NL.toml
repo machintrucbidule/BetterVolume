@@ -1,0 +1,55 @@
+# Microsoft Store listing, Dutch (Netherlands). See en-US.toml for the limits.
+
+short_description = "Schakel met één klik tussen je luidsprekers, headset en tv en stel het volume van elke app in, in een paneel dat eruitziet en beweegt als Windows 11. Licht, gratis, open source, met een optionele koppeling met Home Assistant."
+
+description = """
+Het volumepaneel dat Windows 11 had moeten hebben.
+
+Klik op het BetterVolume-pictogram naast de klok: er opent een paneel in de stijl van Windows 11, met een grote tegel per uitvoerapparaat. Eén klik is genoeg om het geluid naar je luidsprekers, je headset of je tv te sturen. Daaronder stel je het volume in van elke app die geluid afspeelt, het hoofdvolume en de microfoon.
+
+BetterVolume ziet eruit en beweegt als Windows 11: licht of donker thema, je accentkleur, dezelfde animaties, en het werkt met het toetsenbord en met schermlezers. Het heeft maar een paar megabyte geheugen nodig en vrijwel geen processortijd zolang het wacht.
+
+Maak het van jou: geef je apparaten een andere naam, zet ze in jouw volgorde, geef elk apparaat zijn pictogram uit 27 tekeningen en verberg de apparaten die je nooit gebruikt. Kies de plaats van elke app in het paneel, of verberg de app. Het pictogram naast de klok toont het volumeniveau en desgewenst het apparaat dat nu speelt, in de stijl van Windows of in een kleurrijke stijl in je accentkleur. Met het muiswiel erboven verander je het volume, met een klik met de middelste knop zet je het geluid uit. BetterVolume kan ook het volumepictogram van Windows verbergen, zodat er maar één overblijft.
+
+Home Assistant (optioneel): koppel BetterVolume via MQTT aan je Home Assistant-server en elke pc verschijnt daar als apparaat met zijn audio-uitvoer, volume, dempen, microfoon en mediaknoppen, live bijgewerkt in beide richtingen. Je automatiseringen kunnen het geluid naar de tv sturen zodra die aangaat, het volume verlagen als er wordt aangebeld of de muziek pauzeren als je vertrekt. Zet vóór het verwijderen van BetterVolume de koppeling met Home Assistant uit in de instellingen: daarmee wordt de pc uit Home Assistant verwijderd.
+
+BetterVolume is gratis, open source en verstuurt niets over jou: de enige netwerkverbinding is de optionele koppeling met je eigen Home Assistant-server. Het is beschikbaar in het Nederlands, Engels, Frans, Duits, Spaans, Italiaans, Portugees (Brazilië), Pools, Japans en vereenvoudigd Chinees, en volgt de weergavetaal van Windows.
+
+Gebruik je BetterVolume al, gedownload van de projectpagina? Bij de eerste start neemt de Store-versie je instellingen over; daarna kun je de andere kopie verwijderen.
+"""
+
+features = [
+    "Wissel met één klik van uitvoerapparaat: voor media, voor gesprekken of voor allebei",
+    "Volume van elke app die geluid afspeelt, hoofdvolume en dempen",
+    "Microfoonweergave: invoerapparaat, niveau en dempen",
+    "Windows 11-ontwerp: licht en donker thema, accentkleur, dezelfde animaties",
+    "Werkt met het toetsenbord en met schermlezers",
+    "Geef je apparaten een andere naam, volgorde of verberg ze, en kies hun pictogram uit 27 tekeningen",
+    "Kies de volgorde van je apps in het paneel, of verberg ze",
+    "Pictogram naast de klok met het volumeniveau of het apparaat dat nu speelt; muiswiel en middelste knop",
+    "Kan het volumepictogram van Windows verbergen",
+    "Optionele koppeling met Home Assistant via MQTT: uitvoer, volume, dempen, microfoon en mediaknoppen van elke pc",
+    "Een paar megabyte geheugen, geen processortijd zolang het wacht",
+    "Tien talen, volgens de weergavetaal van Windows",
+]
+
+search_terms = [
+    "volumemixer",
+    "audio-uitvoer wisselen",
+    "audioapparaat",
+    "volumeregeling",
+    "Home Assistant",
+    "volume per app",
+    "luidsprekers koptelefoon",
+]
+
+captions = [
+    "Wissel met één klik van uitvoer en stel het volume van elke app in",
+    "De microfoonweergave: invoerapparaat, niveau en dempen",
+    "Instellingen in de stijl van Windows 11",
+    "Je apparaten: hun naam, hun volgorde en hun pictogram uit 27 tekeningen",
+    "Optionele koppeling met Home Assistant: het geluid van elke pc in je domotica",
+    "Het pictogram naast de klok en de ballon die verschijnt als het apparaat verandert",
+]
+
+trailer_title = "BetterVolume in actie"

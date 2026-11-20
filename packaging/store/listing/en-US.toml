@@ -1,0 +1,57 @@
+# Microsoft Store listing, English (United States). Plain text only (no URL, no markup).
+# Limits: description 10 000 characters, short description 270 (1 000 at most),
+# features 20 x 200, search terms 7 x 40 (21 different words at most), captions 200.
+
+short_description = "Switch between your speakers, headset and TV in one click and set the volume of each application, in a panel that looks and moves like Windows 11. Light, free, open source, with an optional Home Assistant link."
+
+description = """
+The volume panel Windows 11 should have had.
+
+Click the BetterVolume icon next to the clock: a panel in the Windows 11 style opens, with one large tile per output device. One click switches the sound between your speakers, your headset and your TV. Below them, set the volume of each application playing sound, the master volume and the microphone.
+
+BetterVolume looks and moves like Windows 11: light or dark theme, your accent colour, the same animations, and it works with the keyboard and screen readers. It needs only a few megabytes of memory and practically no processor time while it waits.
+
+Make it yours: rename your devices, put them in your order, give each one its icon among 27 drawings, and hide those you never use. Choose the place of each application in the panel, or hide it. The icon next to the clock shows the volume level and, if you like, the device playing now, in the Windows style or in a colourful style in your accent colour. The mouse wheel over it changes the volume, a middle click mutes. BetterVolume can also hide the Windows volume icon, so that only one remains.
+
+Home Assistant (optional): link BetterVolume to your Home Assistant server through MQTT, and each PC appears as a device with its audio output, volume, mute, microphone and media buttons, updated live in both directions. Your automations can switch the sound to the TV when it turns on, lower the volume when someone rings at the door, or pause the music when you leave. Before uninstalling BetterVolume, turn the Home Assistant link off in its settings: this removes the PC from Home Assistant.
+
+BetterVolume is free, open source, and sends nothing about you: its only network connection is the optional link to your own Home Assistant server. It speaks English, French, German, Spanish, Italian, Portuguese (Brazil), Dutch, Polish, Japanese and Simplified Chinese, and follows the Windows display language.
+
+Already using BetterVolume downloaded from its project page? At its first start, the Store version takes over your settings; you can then uninstall the other copy.
+"""
+
+features = [
+    "Switch the output device in one click: for media, for calls, or both",
+    "Volume of each application playing sound, master volume and mute",
+    "Microphone view: input device, level and mute",
+    "Windows 11 design: light and dark themes, accent colour, the same animations",
+    "Works with the keyboard and screen readers",
+    "Rename, reorder and hide your devices, and choose their icon among 27 drawings",
+    "Choose the order of your applications in the panel, or hide them",
+    "Icon next to the clock showing the volume level or the device playing now; mouse wheel and middle click",
+    "Can hide the Windows volume icon",
+    "Optional Home Assistant link through MQTT: output, volume, mute, microphone and media buttons of each PC",
+    "A few megabytes of memory, no processor time while it waits",
+    "Ten languages, following the Windows display language",
+]
+
+search_terms = [
+    "volume mixer",
+    "audio device switcher",
+    "sound output",
+    "volume control",
+    "Home Assistant",
+    "app volume",
+    "tray volume",
+]
+
+captions = [
+    "Switch the output in one click and set the volume of each application",
+    "The microphone view: input device, level and mute",
+    "Settings in the Windows 11 style",
+    "Your devices: their names, their order and their icons among 27 drawings",
+    "Optional Home Assistant link: the sound of each PC in your home automation",
+    "The icon next to the clock, and the bubble shown when the device changes",
+]
+
+trailer_title = "BetterVolume in action"

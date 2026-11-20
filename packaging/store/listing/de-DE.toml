@@ -1,0 +1,55 @@
+# Microsoft Store listing, German (Germany). See en-US.toml for the limits.
+
+short_description = "Wechseln Sie mit einem Klick zwischen Lautsprechern, Headset und TV und stellen Sie die Lautstärke jeder App ein – in einem Fenster, das aussieht und sich bewegt wie Windows 11. Schlank, kostenlos, Open Source, optional mit Home Assistant."
+
+description = """
+Die Lautstärkeregelung, die Windows 11 hätte haben sollen.
+
+Klicken Sie auf das BetterVolume-Symbol neben der Uhr: Ein Fenster im Stil von Windows 11 öffnet sich, mit einer großen Kachel pro Ausgabegerät. Ein Klick genügt, um den Ton auf Ihre Lautsprecher, Ihr Headset oder Ihren Fernseher umzuschalten. Darunter stellen Sie die Lautstärke jeder App ein, die Ton wiedergibt, sowie die Gesamtlautstärke und das Mikrofon.
+
+BetterVolume sieht aus und bewegt sich wie Windows 11: helles oder dunkles Design, Ihre Akzentfarbe, dieselben Animationen, und es lässt sich mit der Tastatur und mit Sprachausgaben bedienen. Es braucht nur wenige Megabyte Arbeitsspeicher und praktisch keine Prozessorzeit, solange es wartet.
+
+Passen Sie es an: Benennen Sie Ihre Geräte um, ordnen Sie sie nach Ihren Wünschen, geben Sie jedem sein Symbol aus 27 Zeichnungen und blenden Sie die aus, die Sie nie verwenden. Legen Sie die Position jeder App fest oder blenden Sie sie aus. Das Symbol neben der Uhr zeigt die Lautstärke und auf Wunsch das gerade spielende Gerät, im Windows-Stil oder farbig in Ihrer Akzentfarbe. Das Mausrad darüber ändert die Lautstärke, ein Klick mit der mittleren Maustaste schaltet stumm. BetterVolume kann außerdem das Windows-Lautstärkesymbol ausblenden, damit nur eines bleibt.
+
+Home Assistant (optional): Verbinden Sie BetterVolume über MQTT mit Ihrem Home-Assistant-Server, und jeder PC erscheint dort als Gerät mit Audioausgabe, Lautstärke, Stummschaltung, Mikrofon und Medientasten, live in beide Richtungen aktualisiert. Ihre Automatisierungen können den Ton auf den Fernseher umschalten, sobald er eingeschaltet wird, die Lautstärke senken, wenn es an der Tür klingelt, oder die Musik anhalten, wenn Sie gehen. Schalten Sie vor dem Deinstallieren von BetterVolume die Home-Assistant-Verbindung in den Einstellungen aus: Dadurch wird der PC aus Home Assistant entfernt.
+
+BetterVolume ist kostenlos, Open Source und sendet nichts über Sie: Seine einzige Netzwerkverbindung ist die optionale Verbindung zu Ihrem eigenen Home-Assistant-Server. Es ist auf Deutsch, Englisch, Französisch, Spanisch, Italienisch, Portugiesisch (Brasilien), Niederländisch, Polnisch, Japanisch und vereinfachtem Chinesisch verfügbar und folgt der Anzeigesprache von Windows.
+
+Sie verwenden bereits BetterVolume von der Projektseite? Beim ersten Start übernimmt die Store-Version Ihre Einstellungen; danach können Sie die andere Kopie deinstallieren.
+"""
+
+features = [
+    "Ausgabegerät mit einem Klick wechseln: für Medien, für Anrufe oder für beides",
+    "Lautstärke jeder App, die Ton wiedergibt, Gesamtlautstärke und Stummschaltung",
+    "Mikrofonansicht: Eingabegerät, Pegel und Stummschaltung",
+    "Windows 11-Design: helles und dunkles Design, Akzentfarbe, dieselben Animationen",
+    "Bedienbar mit der Tastatur und mit Sprachausgaben",
+    "Geräte umbenennen, neu ordnen und ausblenden, ihr Symbol aus 27 Zeichnungen wählen",
+    "Reihenfolge der Apps im Fenster festlegen oder Apps ausblenden",
+    "Symbol neben der Uhr mit Lautstärke oder dem gerade spielenden Gerät; Mausrad und mittlere Maustaste",
+    "Kann das Windows-Lautstärkesymbol ausblenden",
+    "Optionale Home-Assistant-Verbindung über MQTT: Ausgabe, Lautstärke, Stummschaltung, Mikrofon und Medientasten jedes PCs",
+    "Wenige Megabyte Arbeitsspeicher, keine Prozessorzeit im Wartezustand",
+    "Zehn Sprachen, passend zur Anzeigesprache von Windows",
+]
+
+search_terms = [
+    "Lautstärkemixer",
+    "Audioausgabe wechseln",
+    "Audiogerät umschalten",
+    "Lautstärkeregelung",
+    "Home Assistant",
+    "App-Lautstärke",
+    "Lautsprecher Kopfhörer",
+]
+
+captions = [
+    "Ausgabe mit einem Klick wechseln und die Lautstärke jeder App einstellen",
+    "Die Mikrofonansicht: Eingabegerät, Pegel und Stummschaltung",
+    "Einstellungen im Stil von Windows 11",
+    "Ihre Geräte: Namen, Reihenfolge und Symbole aus 27 Zeichnungen",
+    "Optionale Home-Assistant-Verbindung: der Ton jedes PCs in Ihrer Hausautomation",
+    "Das Symbol neben der Uhr und die Blase, die beim Gerätewechsel erscheint",
+]
+
+trailer_title = "BetterVolume in Aktion"

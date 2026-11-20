@@ -502,6 +502,17 @@ the processes it starts and of any program of its package folder. Hence:
 Every other part is the same program. The single-instance mutex and the window messages
 are shared with a GitHub copy (tested: the second copy hands over and exits).
 
+Store listing (on demand, not a gate): the texts of each listing language are in
+`packaging\store\listing\<language>.toml`, the values shared by all of them in
+`common.toml`. The images are drawn by the application's own code like the README images:
+the ignored test `store_images` (`bv-app/src/app/store.rs`, sample devices and clock of
+each language) writes layers that `tools\store-images.py` composes on a 1920 x 1080
+desktop (six screenshots per language, the English demonstration video encoded by
+ffmpeg, and the super hero image `packaging\store\hero.svg` rendered by Edge).
+`tools\store-listing.py check` holds the texts to the Store's limits;
+`tools\store-listing.py fill` writes them and the images into the listing file exported
+from Partner Center, for its "Import folder".
+
 ## 10. Updates (FR-132)
 
 | Part | Where |

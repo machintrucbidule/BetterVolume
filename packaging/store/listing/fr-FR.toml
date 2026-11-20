@@ -1,0 +1,55 @@
+# Microsoft Store listing, French (France). See en-US.toml for the limits.
+
+short_description = "Passez de vos haut-parleurs à votre casque ou à votre TV en un clic et réglez le volume de chaque application, dans un panneau qui ressemble à Windows 11 et bouge comme lui. Léger, gratuit, open source, lien Home Assistant en option."
+
+description = """
+Le panneau de volume que Windows 11 aurait dû avoir.
+
+Cliquez sur l’icône BetterVolume près de l’horloge : un panneau dans le style de Windows 11 s’ouvre, avec une grande vignette par périphérique de sortie. Un clic suffit pour envoyer le son vers vos haut-parleurs, votre casque ou votre TV. Juste en dessous, réglez le volume de chaque application qui joue du son, le volume général et le microphone.
+
+BetterVolume ressemble à Windows 11 et bouge comme lui : thème clair ou sombre, votre couleur d’accentuation, les mêmes animations, et il s’utilise au clavier comme avec un lecteur d’écran. Il ne demande que quelques mégaoctets de mémoire et pratiquement aucun temps de processeur quand il attend.
+
+Personnalisez-le : renommez vos périphériques, rangez-les dans votre ordre, donnez à chacun son icône parmi 27 dessins et masquez ceux que vous n’utilisez jamais. Choisissez la place de chaque application dans le panneau, ou masquez-la. L’icône près de l’horloge indique le niveau du volume et, si vous le souhaitez, le périphérique qui joue, dans le style de Windows ou dans un style coloré à votre couleur d’accentuation. La molette de la souris au-dessus d’elle change le volume, un clic du milieu coupe le son. BetterVolume peut aussi masquer l’icône volume de Windows, pour qu’il n’en reste qu’une.
+
+Home Assistant (en option) : reliez BetterVolume à votre serveur Home Assistant par MQTT, et chaque PC y apparaît comme un appareil avec sa sortie audio, son volume, sa coupure du son, son microphone et ses boutons multimédia, mis à jour en direct dans les deux sens. Vos automatisations peuvent envoyer le son vers la TV quand elle s’allume, baisser le volume quand on sonne à la porte ou mettre la musique en pause quand vous partez. Avant de désinstaller BetterVolume, désactivez le lien Home Assistant dans ses paramètres : cela retire le PC de Home Assistant.
+
+BetterVolume est gratuit, open source et n’envoie rien sur vous : sa seule connexion réseau est le lien facultatif vers votre propre serveur Home Assistant. Il parle français, anglais, allemand, espagnol, italien, portugais (Brésil), néerlandais, polonais, japonais et chinois simplifié, et suit la langue d’affichage de Windows.
+
+Vous utilisez déjà BetterVolume téléchargé depuis sa page de projet ? À son premier démarrage, la version du Store reprend vos paramètres ; vous pouvez ensuite désinstaller l’autre copie.
+"""
+
+features = [
+    "Changez de périphérique de sortie en un clic : pour le multimédia, les appels, ou les deux",
+    "Volume de chaque application qui joue du son, volume général et coupure du son",
+    "Vue microphone : périphérique d’entrée, niveau et coupure",
+    "Design Windows 11 : thèmes clair et sombre, couleur d’accentuation, les mêmes animations",
+    "Utilisable au clavier et avec un lecteur d’écran",
+    "Renommez, réordonnez et masquez vos périphériques, et choisissez leur icône parmi 27 dessins",
+    "Choisissez l’ordre de vos applications dans le panneau, ou masquez-les",
+    "Icône près de l’horloge indiquant le niveau du volume ou le périphérique qui joue ; molette et clic du milieu",
+    "Peut masquer l’icône volume de Windows",
+    "Lien Home Assistant facultatif par MQTT : sortie, volume, coupure, microphone et boutons multimédia de chaque PC",
+    "Quelques mégaoctets de mémoire, aucun temps de processeur quand il attend",
+    "Dix langues, selon la langue d’affichage de Windows",
+]
+
+search_terms = [
+    "mélangeur de volume",
+    "changer sortie audio",
+    "périphérique audio",
+    "contrôle du volume",
+    "Home Assistant",
+    "volume par application",
+    "son casque haut-parleurs",
+]
+
+captions = [
+    "Changez de sortie en un clic et réglez le volume de chaque application",
+    "La vue microphone : périphérique d’entrée, niveau et coupure",
+    "Des paramètres dans le style de Windows 11",
+    "Vos périphériques : leurs noms, leur ordre et leurs icônes parmi 27 dessins",
+    "Lien Home Assistant facultatif : le son de chaque PC dans votre domotique",
+    "L’icône près de l’horloge, et la bulle affichée quand le périphérique change",
+]
+
+trailer_title = "BetterVolume en action"

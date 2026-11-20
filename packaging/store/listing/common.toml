@@ -1,0 +1,24 @@
+# Microsoft Store values shared by every listing language.
+
+# Listing fields (written by tools/store-listing.py into the import file).
+title = "BetterVolume"
+copyright = "© 2026 BetterVolume contributors. MIT licence."
+developed_by = "BetterVolume contributors"
+
+# Partner Center fields outside the listing import (entered once in the submission).
+category = "Utilities & tools"
+price = "Free"
+privacy_policy_url = "https://github.com/machintrucbidule/BetterVolume#privacy"
+website_url = "https://github.com/machintrucbidule/BetterVolume"
+support_contact = "https://github.com/machintrucbidule/BetterVolume/issues"
+
+# Why the package declares the restricted capability runFullTrust (Partner Center asks
+# for it in the submission's "Submission options").
+run_full_trust = """
+BetterVolume is a classic Windows desktop application packaged for the Store (it is not a UWP app). It needs full trust because it shows its own icon in the notification area next to the clock, reads and changes the audio devices and volumes through the Windows Core Audio interfaces, starts with Windows through the package's startup task, and, only when the user turns the option on, hides the Windows volume icon of the taskbar by loading a small helper of the package into Explorer. It sends nothing about the user; its only network connection is the optional MQTT link to the user's own Home Assistant server.
+"""
+
+# Notes for certification (Partner Center, "Submission options").
+certification_notes = """
+No account or sign-in is needed. After the first start, BetterVolume shows a speaker icon in the notification area next to the clock (if Windows puts it behind the ^ arrow, BetterVolume asks Windows to show it on the taskbar). Click it to open the panel: one tile per output device, the volume of each application playing sound, the microphone view. The settings open from the gear button of the panel or from the right-click menu of the icon. The Home Assistant link is optional and off by default; it needs the user's own MQTT server, and everything else works without it. Updates of the Store version come from the Store only.
+"""

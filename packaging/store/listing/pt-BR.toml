@@ -1,0 +1,55 @@
+# Microsoft Store listing, Portuguese (Brazil). See en-US.toml for the limits.
+
+short_description = "Alterne entre alto-falantes, headset e TV com um clique e ajuste o volume de cada aplicativo, em um painel com a aparência e os movimentos do Windows 11. Leve, gratuito, de código aberto, com integração opcional ao Home Assistant."
+
+description = """
+O painel de volume que o Windows 11 deveria ter tido.
+
+Clique no ícone do BetterVolume ao lado do relógio: abre-se um painel no estilo do Windows 11, com um bloco grande para cada dispositivo de saída. Um clique basta para levar o som para os alto-falantes, para o headset ou para a TV. Logo abaixo, ajuste o volume de cada aplicativo que reproduz som, o volume geral e o microfone.
+
+O BetterVolume tem a aparência e os movimentos do Windows 11: tema claro ou escuro, sua cor de destaque, as mesmas animações, e pode ser usado com o teclado e com leitores de tela. Ele precisa de apenas alguns megabytes de memória e praticamente nenhum tempo de processador enquanto espera.
+
+Deixe do seu jeito: renomeie seus dispositivos, coloque-os na sua ordem, dê a cada um o seu ícone entre 27 desenhos e oculte os que você nunca usa. Escolha a posição de cada aplicativo no painel, ou oculte-o. O ícone ao lado do relógio mostra o nível do volume e, se quiser, o dispositivo que está tocando, no estilo do Windows ou em um estilo colorido na sua cor de destaque. A roda do mouse sobre ele muda o volume, e um clique com o botão do meio silencia. O BetterVolume também pode ocultar o ícone de volume do Windows, para que reste apenas um.
+
+Home Assistant (opcional): conecte o BetterVolume ao seu servidor Home Assistant via MQTT, e cada PC aparece como um dispositivo com saída de áudio, volume, mudo, microfone e botões de mídia, atualizados ao vivo nos dois sentidos. Suas automações podem levar o som para a TV quando ela liga, abaixar o volume quando a campainha toca ou pausar a música quando você sai. Antes de desinstalar o BetterVolume, desative a integração com o Home Assistant nas configurações dele: isso remove o PC do Home Assistant.
+
+O BetterVolume é gratuito, de código aberto e não envia nada sobre você: sua única conexão de rede é a integração opcional com o seu próprio servidor Home Assistant. Ele está disponível em português (Brasil), inglês, francês, alemão, espanhol, italiano, holandês, polonês, japonês e chinês simplificado, e segue o idioma de exibição do Windows.
+
+Já usa o BetterVolume baixado da página do projeto? Na primeira inicialização, a versão da Store assume as suas configurações; depois, você pode desinstalar a outra cópia.
+"""
+
+features = [
+    "Troque o dispositivo de saída com um clique: para mídia, para chamadas ou para ambos",
+    "Volume de cada aplicativo que reproduz som, volume geral e mudo",
+    "Visualização do microfone: dispositivo de entrada, nível e mudo",
+    "Design do Windows 11: temas claro e escuro, cor de destaque, as mesmas animações",
+    "Pode ser usado com o teclado e com leitores de tela",
+    "Renomeie, reordene e oculte seus dispositivos, e escolha o ícone deles entre 27 desenhos",
+    "Escolha a ordem dos seus aplicativos no painel, ou oculte-os",
+    "Ícone ao lado do relógio com o nível do volume ou o dispositivo que está tocando; roda do mouse e clique do meio",
+    "Pode ocultar o ícone de volume do Windows",
+    "Integração opcional com o Home Assistant via MQTT: saída, volume, mudo, microfone e botões de mídia de cada PC",
+    "Alguns megabytes de memória, nenhum tempo de processador enquanto espera",
+    "Dez idiomas, de acordo com o idioma de exibição do Windows",
+]
+
+search_terms = [
+    "mixer de volume",
+    "trocar saída de áudio",
+    "dispositivo de áudio",
+    "controle de volume",
+    "Home Assistant",
+    "volume por aplicativo",
+    "alto-falantes fones",
+]
+
+captions = [
+    "Troque a saída com um clique e ajuste o volume de cada aplicativo",
+    "A visualização do microfone: dispositivo de entrada, nível e mudo",
+    "Configurações no estilo do Windows 11",
+    "Seus dispositivos: nomes, ordem e ícones entre 27 desenhos",
+    "Integração opcional com o Home Assistant: o som de cada PC na sua automação residencial",
+    "O ícone ao lado do relógio e o balão exibido quando o dispositivo muda",
+]
+
+trailer_title = "BetterVolume em ação"

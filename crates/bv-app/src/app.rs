@@ -37,6 +37,9 @@ mod sheets;
 // Documentation images (rendered layers for the README, run on demand).
 #[cfg(test)]
 mod readme;
+// Microsoft Store images (rendered layers for the listing, run on demand).
+#[cfg(test)]
+mod store;
 
 pub use apps_page::ProcessList;
 pub use flyout::FlyoutEffect;
