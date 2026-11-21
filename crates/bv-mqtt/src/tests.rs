@@ -360,6 +360,46 @@ fn a_server_answering_too_slowly_is_given_up() {
 }
 
 #[test]
+fn a_stop_ends_even_if_the_broker_never_closes_after_the_goodbye() {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    // Accepts the connection, keeps everything it receives, and stays open 3 s after
+    // the client's end instead of closing at the goodbye.
+    let server = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        socket.set_read_timeout(Some(WAIT)).unwrap();
+        let mut received = Vec::new();
+        let mut buf = [0_u8; 1024];
+        let mut answered = false;
+        loop {
+            match socket.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => received.extend_from_slice(&buf[..n]),
+            }
+            if !answered {
+                // CONNACK, accepted.
+                socket.write_all(&[0x20, 0x02, 0x00, 0x00]).unwrap();
+                answered = true;
+            }
+        }
+        std::thread::sleep(Duration::from_secs(3));
+        received
+    });
+    let (_, notify) = notify_counter();
+    let client = Client::start(options(port), notify);
+    let mut seen = Seen::default();
+    assert!(until(&client, &mut seen, connected));
+    let started = Instant::now();
+    client.stop(vec![message("pc/availability", "bye", true)], Duration::from_secs(5));
+    assert!(started.elapsed() < Duration::from_secs(3), "{:?}", started.elapsed());
+    let received = server.join().unwrap();
+    // The goodbye (DISCONNECT) arrived, after the farewell.
+    assert!(received.ends_with(&[0xE0, 0x00]), "{received:?}");
+    assert!(received.windows(3).any(|w| w == b"bye"));
+}
+
+#[test]
 fn a_stop_is_quick_while_a_flood_fills_the_queue() {
     let broker = Broker::start(BrokerConfig::default()).unwrap();
     let (_, notify) = notify_counter();

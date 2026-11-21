@@ -53,6 +53,11 @@ const FIRST_RETRY: Duration = Duration::from_secs(1);
 const STABLE: Duration = Duration::from_secs(60);
 /// Longest delay between two attempts.
 const LAST_RETRY: Duration = Duration::from_secs(60);
+/// How long a clean stop waits, after the goodbye, for the broker to close its side
+/// before the connection is cut.
+const LINGER: Duration = Duration::from_secs(1);
+/// Attempts at shutting a socket down, in case Windows refuses one (see `Socket`).
+const SHUTDOWN_ATTEMPTS: u32 = 5;
 
 /// A SHA-256 certificate fingerprint.
 pub type Fingerprint = [u8; 32];
@@ -240,10 +245,48 @@ impl Drop for Client {
     }
 }
 
+/// The connected socket, shared: the connection reads and writes through it while a
+/// stop or the connection deadline shuts it down from another thread. Shutting down
+/// through a duplicate (`try_clone`) is not enough: Windows sometimes refuses it there
+/// ("not connected") while the connection is up, and nothing happens; through the
+/// original socket it works.
+#[derive(Clone, Debug)]
+struct Socket(Arc<TcpStream>);
+
+impl Socket {
+    fn new(tcp: TcpStream) -> Socket {
+        Socket(Arc::new(tcp))
+    }
+}
+
+impl std::ops::Deref for Socket {
+    type Target = TcpStream;
+
+    fn deref(&self) -> &TcpStream {
+        &self.0
+    }
+}
+
+impl Read for Socket {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        (&*self.0).read(buf)
+    }
+}
+
+impl Write for Socket {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        (&*self.0).write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        (&*self.0).flush()
+    }
+}
+
 /// The socket, plain or encrypted.
 enum Stream {
-    Plain(TcpStream),
-    Tls(Box<native_tls::TlsStream<TcpStream>>),
+    Plain(Socket),
+    Tls(Box<native_tls::TlsStream<Socket>>),
 }
 
 impl Read for Stream {
@@ -275,12 +318,28 @@ fn lock(stream: &Mutex<Stream>) -> MutexGuard<'_, Stream> {
     stream.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+/// Shuts `socket` down in direction `how`, trying again briefly if refused (see
+/// `SHUTDOWN_ATTEMPTS`). Returns whether it was done.
+fn shut_down(socket: &Socket, how: Shutdown) -> bool {
+    for attempt in 0..SHUTDOWN_ATTEMPTS {
+        if attempt > 0 {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        if socket.shutdown(how).is_ok() {
+            return true;
+        }
+    }
+    false
+}
+
 /// An established connection.
 struct Link {
     stream: Arc<Mutex<Stream>>,
-    /// The raw socket, to wake the reader by shutting it down.
-    raw: TcpStream,
+    /// The socket of `stream`, to shut it down without waiting for the lock.
+    raw: Socket,
     reader: Option<JoinHandle<()>>,
+    /// Tells the reader its connection was let go (see `Handoff::let_go`).
+    let_go: Arc<AtomicBool>,
 }
 
 impl Link {
@@ -290,10 +349,52 @@ impl Link {
         stream.flush()
     }
 
+    /// Shuts the connection down in direction `how` (see `shut_down`).
+    fn shut(&self, how: Shutdown) -> bool {
+        shut_down(&self.raw, how)
+    }
+
+    /// Cuts the connection (without a goodbye before, the broker publishes the will).
     fn close(mut self) {
-        let _ = self.raw.shutdown(Shutdown::Both);
+        self.shut(Shutdown::Both);
+        self.let_reader_go();
+    }
+
+    /// After the goodbye (DISCONNECT): only the sending side is shut, so that bytes still
+    /// unread here cannot turn the end into a reset that loses the goodbye (Windows resets
+    /// a connection shut for reading while received bytes wait); the broker then closes
+    /// its side and the reader sees the end, which it reports on `inbox` (the worker's
+    /// commands, nothing else matters any more). Cut after `LINGER` otherwise.
+    fn close_gracefully(mut self, inbox: &Receiver<Command>, generation: u64) {
+        let mut ended = false;
+        if self.shut(Shutdown::Write) {
+            let deadline = Instant::now() + LINGER;
+            while !ended {
+                let left = deadline.saturating_duration_since(Instant::now());
+                match inbox.recv_timeout(left) {
+                    Ok(Command::ReaderEnded(g)) => ended = g == generation,
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+            }
+        }
+        if !ended {
+            self.shut(Shutdown::Both);
+        }
+        self.let_reader_go();
+    }
+
+    /// The reader is not waited for: a local shutdown is not relied on to wake a thread
+    /// waiting in the socket (on Windows, shutting the sending then both sides did not
+    /// wake it); the broker's end does (at once once it sees ours), or else the reader's
+    /// silence limit. Its share of the socket is closed when it ends; meanwhile it hands
+    /// nothing over (`let_go`), and its end report carries an old generation.
+    fn let_reader_go(&mut self) {
+        self.let_go.store(true, Ordering::SeqCst);
         if let Some(reader) = self.reader.take() {
-            let _ = reader.join();
+            if reader.is_finished() {
+                let _ = reader.join();
+            }
         }
     }
 }
@@ -359,27 +460,31 @@ impl Worker {
     }
 
     /// Serves one connection until it is lost (returns why) or the client stops (`None`).
-    fn serve(&mut self, stream: Stream, raw: TcpStream) -> Option<Problem> {
+    fn serve(&mut self, stream: Stream, raw: Socket) -> Option<Problem> {
         self.generation += 1;
         let generation = self.generation;
         let stream = Arc::new(Mutex::new(stream));
+        let let_go = Arc::new(AtomicBool::new(false));
         let reader = {
             let reader_raw = raw.try_clone().ok()?;
             let stream = Arc::clone(&stream);
-            let commands = self.loopback.clone();
-            let outbox = self.outbox.clone();
-            let notify = Arc::clone(&self.notify);
             let silence = self.options.keep_alive * 3 / 2;
-            let filters = self.options.subscriptions.clone();
+            let to = Handoff {
+                filters: self.options.subscriptions.clone(),
+                commands: self.loopback.clone(),
+                outbox: self.outbox.clone(),
+                notify: Arc::clone(&self.notify),
+                let_go: Arc::clone(&let_go),
+            };
             std::thread::Builder::new()
                 .name("bv-mqtt-reader".into())
                 .spawn(move || {
-                    read_loop(&stream, &reader_raw, silence, &filters, &commands, &outbox, &notify);
-                    let _ = commands.send(Command::ReaderEnded(generation));
+                    read_loop(&stream, &reader_raw, silence, &to);
+                    let _ = to.commands.send(Command::ReaderEnded(generation));
                 })
                 .ok()
         };
-        let link = Link { stream, raw, reader };
+        let link = Link { stream, raw, reader, let_go };
         if link.reader.is_none() {
             link.close();
             return Some(Problem::Lost);
@@ -432,7 +537,7 @@ impl Worker {
                         }
                     }
                     let _ = link.write(&Packet::Disconnect);
-                    link.close();
+                    link.close_gracefully(&self.inbox, generation);
                     let _ = done.send(());
                     return None;
                 }
@@ -471,15 +576,20 @@ fn deliver(outbox: &SyncSender<Event>, notify: &Notify, event: Event) -> bool {
 
 /// Reads packets until the connection ends (or stays silent longer than `silence`).
 /// Messages on topics outside `filters` are not passed on.
-fn read_loop(
-    stream: &Mutex<Stream>,
-    raw: &TcpStream,
-    silence: Duration,
-    filters: &[String],
-    commands: &Sender<Command>,
-    outbox: &SyncSender<Event>,
-    notify: &Notify,
-) {
+/// Where a reader hands what it reads.
+struct Handoff {
+    filters: Vec<String>,
+    commands: Sender<Command>,
+    outbox: SyncSender<Event>,
+    notify: Notify,
+    /// Set when its connection was let go (`Link::let_reader_go`): the reader is not
+    /// waited for, so from then on it hands nothing over (a later connection, or a
+    /// stopped client, must never see its packets) and stops.
+    let_go: Arc<AtomicBool>,
+}
+
+fn read_loop(stream: &Mutex<Stream>, raw: &TcpStream, silence: Duration, to: &Handoff) {
+    let Handoff { filters, commands, outbox, notify, let_go } = to;
     if raw.set_read_timeout(Some(silence)).is_err() {
         return;
     }
@@ -538,6 +648,9 @@ fn read_loop(
                 match Packet::decode(&input[start..]) {
                     Ok(Some((packet, used))) => {
                         start += used;
+                        if let_go.load(Ordering::SeqCst) {
+                            return;
+                        }
                         if let Packet::Publish(p) = packet {
                             if p.qos == 1 {
                                 let _ = commands.send(Command::Ack(p.id));
@@ -571,14 +684,13 @@ fn read_loop(
 }
 
 /// Resolves, connects (encrypting if asked), sends CONNECT and reads CONNACK.
-fn connect(options: &Options, abandoned: &AtomicBool) -> Result<(Stream, TcpStream), Problem> {
-    let tcp = tcp(options)?;
-    let raw = tcp.try_clone().map_err(|_| Problem::Unreachable)?;
+fn connect(options: &Options, abandoned: &AtomicBool) -> Result<(Stream, Socket), Problem> {
+    let raw = Socket::new(tcp(options)?);
     // From here to the broker's answer (end of this function): at most `CONNECT_DEADLINE`.
-    let _deadline = Deadline::start(&raw);
+    let _deadline = Deadline::start(raw.clone());
     let mut stream = match &options.tls {
-        None => Stream::Plain(tcp),
-        Some(tls) => Stream::Tls(Box::new(encrypt(options, tls, tcp)?)),
+        None => Stream::Plain(raw.clone()),
+        Some(tls) => Stream::Tls(Box::new(encrypt(options, tls, raw.clone())?)),
     };
     let connect = Packet::Connect(Connect {
         client_id: options.client_id.clone(),
@@ -638,15 +750,14 @@ struct Deadline {
 }
 
 impl Deadline {
-    fn start(socket: &TcpStream) -> Option<Deadline> {
-        let socket = socket.try_clone().ok()?;
+    fn start(socket: Socket) -> Option<Deadline> {
         let (cancel, cancelled) = mpsc::channel::<()>();
         std::thread::Builder::new()
             .name("bv-mqtt-deadline".into())
             .spawn(move || {
                 // Dropping `cancel` ends the wait at once (disconnected).
                 if cancelled.recv_timeout(CONNECT_DEADLINE) == Err(RecvTimeoutError::Timeout) {
-                    let _ = socket.shutdown(Shutdown::Both);
+                    shut_down(&socket, Shutdown::Both);
                 }
             })
             .ok()?;
@@ -670,7 +781,7 @@ fn tcp(options: &Options) -> Result<TcpStream, Problem> {
 }
 
 /// The fingerprint of the certificate a TLS stream received.
-fn fingerprint(stream: &native_tls::TlsStream<TcpStream>) -> Option<Fingerprint> {
+fn fingerprint(stream: &native_tls::TlsStream<Socket>) -> Option<Fingerprint> {
     let certificate = stream.peer_certificate().ok()??;
     let der = certificate.to_der().ok()?;
     Some(bv_core::encoding::sha256(&der))
@@ -679,8 +790,8 @@ fn fingerprint(stream: &native_tls::TlsStream<TcpStream>) -> Option<Fingerprint>
 fn encrypt(
     options: &Options,
     tls: &Tls,
-    tcp: TcpStream,
-) -> Result<native_tls::TlsStream<TcpStream>, Problem> {
+    tcp: Socket,
+) -> Result<native_tls::TlsStream<Socket>, Problem> {
     let connector = |any_certificate: bool| {
         native_tls::TlsConnector::builder()
             .danger_accept_invalid_certs(any_certificate)
@@ -704,8 +815,8 @@ fn encrypt(
             // Was it the certificate? Look at it over a second connection that accepts
             // any certificate (nothing is sent over it).
             Err(_) => {
-                let tcp = self::tcp(options)?;
-                let _deadline = Deadline::start(&tcp);
+                let tcp = Socket::new(self::tcp(options)?);
+                let _deadline = Deadline::start(tcp.clone());
                 let probe = connector(true)?
                     .connect(&options.host, tcp)
                     .map_err(|_| Problem::Encryption)?;
@@ -721,6 +832,7 @@ pub fn test(options: &Options) -> Result<(), Problem> {
     let (mut stream, raw) = connect(options, &AtomicBool::new(false))?;
     let _ = stream.write_all(&Packet::Disconnect.encode());
     let _ = stream.flush();
-    let _ = raw.shutdown(Shutdown::Both);
+    // The sending side only: a reset could lose the goodbye (see `close_gracefully`).
+    let _ = raw.shutdown(Shutdown::Write);
     Ok(())
 }

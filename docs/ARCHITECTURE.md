@@ -183,6 +183,19 @@ device list as the flyout, FR-112). `Event::Suspending` and Quit stop the link w
 every entity. The settings page (`ha_page.rs`) keeps a draft form until "Save" and runs
 "Test connection" on a thread of its own (`Platform::test`).
 
+Ending an MQTT connection (`bv-mqtt/src/client.rs`, `Link`): a stop writes the farewell
+and the MQTT goodbye, then shuts only the sending side of the socket and waits, at most
+one second, for the reader to report that the broker closed. Windows resets a connection
+shut for reading while received bytes wait, and a reset can make the broker lose the
+farewell. Any other end (connection lost, client given up, connection deadline) shuts
+both sides. The reader thread is never waited for beyond that, as a local shutdown is not
+relied on to wake it (on Windows, shutting the sending then both sides did not): the
+broker's own close ends it, or else its silence limit, and once let go it hands nothing
+over. Shutting down always goes through the original socket, shared as
+`client::Socket`, never through a duplicate made by `try_clone`: Windows sometimes
+refuses that ("not connected") and nothing happens. Duplicates only serve the reader's
+wait for bytes.
+
 `bv-shell` depends on `bv-ui-kit` (it hosts the design-system controls in its windows)
 and on `bv-core` (the release-file format).
 
