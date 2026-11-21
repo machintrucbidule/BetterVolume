@@ -73,6 +73,18 @@ Windows 11 (64-bit). No administrator rights are needed.
 
 ## Installation
 
+### From the Microsoft Store
+
+<a href="https://apps.microsoft.com/detail/9NZL77WXW34J?mode=direct"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Download from the Microsoft Store" width="200"></a>
+
+The [Microsoft Store version](https://apps.microsoft.com/detail/9NZL77WXW34J) is the same
+program, signed by the Store: Windows shows no warning when it first starts, and the
+Store keeps it up to date. From a terminal, `winget install 9NZL77WXW34J` installs the
+same version. If a copy from GitHub was used on this PC before, its settings are copied
+once at the first start.
+
+### From GitHub
+
 Download one of the two files from the
 [latest release](../../releases/latest):
 
@@ -85,10 +97,11 @@ Download one of the two files from the
   (`settings.toml`) and log file are kept next to it when that folder can be written,
   otherwise in your user profile.
 
-### The Windows warning on first run
+#### The Windows warning on first run
 
-BetterVolume's files are not digitally signed (a code-signing certificate costs money
-every year), so Windows does not know their publisher. When you open the file the first
+This concerns the two files from GitHub only. They are not digitally signed (a
+code-signing certificate costs money every year), so Windows does not know their
+publisher. When you open the file the first
 time, Windows shows:
 
 > **Windows protected your PC**
@@ -148,6 +161,9 @@ replaces itself and restarts). Nothing is installed without your click.
   published before an official one.
 - The request is the same for everyone and carries nothing about you or your PC.
 
+The Microsoft Store version makes no such check: the Store installs its updates, and its
+About page says so.
+
 ## Home Assistant
 
 BetterVolume talks to Home Assistant through an MQTT server (for example the Mosquitto
@@ -181,10 +197,18 @@ Windows volume icon comes back. For the portable file, quit BetterVolume (right-
 menu → Quit) and delete the file with the `settings.toml` and `BetterVolume.log` next
 to it.
 
+The Microsoft Store version is uninstalled by Windows (right-click it in the Start menu →
+*Uninstall*), which removes its settings too. Windows does not let it run anything at
+that moment, so **if it is linked to Home Assistant, turn the link off first** (*Home
+Assistant* page): otherwise this PC stays in Home Assistant, shown as unavailable, until
+you delete the device there. The Windows volume icon comes back as soon as BetterVolume
+ends.
+
 ## Privacy
 
 BetterVolume sends nothing about you. The only network traffic is the update check
-described above and, if you turn it on, the MQTT link to your own server. The log file
+described above (none in the Microsoft Store version) and, if you turn it on, the MQTT
+link to your own server. The log file
 (*About → Log file*) holds technical events only, no names or addresses.
 
 ## Building from source
