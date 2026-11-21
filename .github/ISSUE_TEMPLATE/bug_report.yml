@@ -1,0 +1,57 @@
+name: Bug report
+description: Something does not work as described.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting it. A few details help to reproduce the problem quickly.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and what you expected instead.
+      placeholder: |
+        1. Opened the panel from the tray icon
+        2. Clicked the headset tile
+        3. The sound stayed on the speakers (expected: the headset)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: BetterVolume version
+      description: Shown on the About page of the settings.
+      placeholder: "2.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: edition
+    attributes:
+      label: Which copy
+      options:
+        - Microsoft Store
+        - Installer (setup file from GitHub)
+        - Portable file from GitHub
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: Type `winver` in the Start menu; for example "Windows 11 24H2, build 26100.4061".
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log file (optional)
+      description: >
+        About page → Log file. It holds technical events only (no names or addresses).
+        Paste the lines around the problem, or attach the file.
+      render: text
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else (optional)
+      description: Audio devices involved, Home Assistant setup, screenshots.
